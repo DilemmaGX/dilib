@@ -1,0 +1,49 @@
+{
+  "name": "minidoc",
+  "version": "1.0.0",
+  "description": "A lightweight, powerful Markdown documentation generator with advanced code block features.",
+  "license": "GPL-3.0",
+  "author": "DilemmaGX",
+  "homepage": "https://github.com/DilemmaGX/dilib/tree/main/minidoc#readme",
+  "bugs": {
+    "url": "https://github.com/DilemmaGX/dilib/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/DilemmaGX/dilib.git",
+    "directory": "minidoc"
+  },
+  "bin": {
+    "minidoc": "./dist/minidoc.js"
+  },
+  "files": [
+    "dist/minidoc.js",
+    "README.md",
+    "LICENSE",
+    "package.json"
+  ],
+  "keywords": [
+    "markdown",
+    "documentation",
+    "generator",
+    "cli",
+    "gfm",
+    "highlight-js"
+  ],
+  "scripts": {
+    "build": "esbuild src/cli.ts --bundle --outfile=dist/minidoc.js --platform=node --target=node18 --banner:js=\"#!/usr/bin/env node\""
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.3",
+    "esbuild": "^0.27.3",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@primer/octicons": "^19.22.0",
+    "@types/highlight.js": "^9.12.4",
+    "@types/markdown-it": "^14.1.2",
+    "commander": "^14.0.3",
+    "highlight.js": "^11.11.1",
+    "markdown-it": "^14.1.1"
+  }
+}

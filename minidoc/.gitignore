@@ -1,0 +1,21 @@
+# Dependencies
+node_modules
+.pnp
+.pnp.js
+
+# Testing
+test
+coverage
+.nyc_output
+
+# Production
+dist
+build
+
+# Misc
+.DS_Store
+*.pem
+*.log
+.env
+.vscode
+.idea
