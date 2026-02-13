@@ -1,8 +1,11 @@
 {
-  "name": "minidoc",
+  "name": "@dilemmagx/minidoc",
   "version": "1.0.0",
   "description": "A lightweight, powerful Markdown documentation generator with advanced code block features.",
   "license": "GPL-3.0",
+  "publishConfig": {
+    "access": "public"
+  },
   "author": "DilemmaGX",
   "homepage": "https://github.com/DilemmaGX/dilib/tree/main/minidoc#readme",
   "bugs": {

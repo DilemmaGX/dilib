@@ -17,7 +17,7 @@ Minidoc is a lightweight, powerful Markdown documentation generator designed for
 ## Installation
 
 ```bash
-npm install minidoc
+npm install @dilemmagx/minidoc
 ```
 
 ## Usage
