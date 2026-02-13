@@ -20,7 +20,7 @@ export interface MinidocOptions {
    * @default "Minidoc"
    */
   title?: string;
-  
+
   /**
    * Whether to enable verbose logging.
    * @default false
@@ -49,16 +49,16 @@ export interface ProcessResult {
    * The original content.
    */
   original: string;
-  
+
   /**
    * The processed content (HTML).
    */
   output: string;
-  
+
   /**
    * Metadata extracted from the content.
    */
-  metadata: Record<string, any>;
+  metadata: Record<string, unknown>;
 }
 
 /**
@@ -67,10 +67,13 @@ export interface ProcessResult {
 const ICONS: Record<string, string> = {
   note: octicons.info.toSVG({ class: 'octicon' }),
   tip: octicons['light-bulb'].toSVG({ class: 'octicon' }),
-  important: '<svg viewBox="0 0 16 16" width="16" height="16" class="octicon"><path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v7.5A1.75 1.75 0 0 1 13.25 12H9.06l-2.573 2.573A1.458 1.458 0 0 1 4 13.543V12H2.75A1.75 1.75 0 0 1 1 10.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h2a.75.75 0 0 1 .75.75v2.19l2.72-2.72a.749.749 0 0 1 .53-.22h4.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"></path><path d="M8 4a.75.75 0 0 1 .75.75v2.5a.75.75 0 0 1-1.5 0v-2.5A.75.75 0 0 1 8 4Zm0 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>',
-  warning: '<svg viewBox="0 0 16 16" width="16" height="16" class="octicon"><path d="M6.457 1.047c.659-1.234 2.427-1.234 3.086 0l6.082 11.378A1.75 1.75 0 0 1 14.082 15H1.918a1.75 1.75 0 0 1-1.543-2.575Zm1.763.707a.25.25 0 0 0-.44 0L1.698 13.132a.25.25 0 0 0 .22.368h12.164a.25.25 0 0 0 .22-.368Zm.53 3.996v2.5a.75.75 0 0 1-1.5 0v-2.5a.75.75 0 0 1 1.5 0ZM9 11a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z"></path></svg>',
-  caution: '<svg viewBox="0 0 16 16" width="16" height="16" class="octicon"><path d="M4.47.22A.75.75 0 0 1 5 0h6a.75.75 0 0 1 .53.22l4.25 4.25c.141.14.22.331.22.53v6a.75.75 0 0 1-.22.53l-4.25 4.25A.75.75 0 0 1 11 16H5a.75.75 0 0 1-.53-.22L.22 11.53A.75.75 0 0 1 0 11V5a.75.75 0 0 1 .22-.53Zm.84 1.28L1.5 5.31v5.38l3.81 3.81h5.38l3.81-3.81V5.31L10.69 1.5ZM8 4a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 8 4Zm0 8a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>',
-  quote: octicons.quote.toSVG({ class: 'octicon' })
+  important:
+    '<svg viewBox="0 0 16 16" width="16" height="16" class="octicon"><path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v7.5A1.75 1.75 0 0 1 13.25 12H9.06l-2.573 2.573A1.458 1.458 0 0 1 4 13.543V12H2.75A1.75 1.75 0 0 1 1 10.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h2a.75.75 0 0 1 .75.75v2.19l2.72-2.72a.749.749 0 0 1 .53-.22h4.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"></path><path d="M8 4a.75.75 0 0 1 .75.75v2.5a.75.75 0 0 1-1.5 0v-2.5A.75.75 0 0 1 8 4Zm0 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>',
+  warning:
+    '<svg viewBox="0 0 16 16" width="16" height="16" class="octicon"><path d="M6.457 1.047c.659-1.234 2.427-1.234 3.086 0l6.082 11.378A1.75 1.75 0 0 1 14.082 15H1.918a1.75 1.75 0 0 1-1.543-2.575Zm1.763.707a.25.25 0 0 0-.44 0L1.698 13.132a.25.25 0 0 0 .22.368h12.164a.25.25 0 0 0 .22-.368Zm.53 3.996v2.5a.75.75 0 0 1-1.5 0v-2.5a.75.75 0 0 1 1.5 0ZM9 11a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z"></path></svg>',
+  caution:
+    '<svg viewBox="0 0 16 16" width="16" height="16" class="octicon"><path d="M4.47.22A.75.75 0 0 1 5 0h6a.75.75 0 0 1 .53.22l4.25 4.25c.141.14.22.331.22.53v6a.75.75 0 0 1-.22.53l-4.25 4.25A.75.75 0 0 1 11 16H5a.75.75 0 0 1-.53-.22L.22 11.53A.75.75 0 0 1 0 11V5a.75.75 0 0 1 .22-.53Zm.84 1.28L1.5 5.31v5.38l3.81 3.81h5.38l3.81-3.81V5.31L10.69 1.5ZM8 4a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 8 4Zm0 8a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>',
+  quote: octicons.quote.toSVG({ class: 'octicon' }),
 };
 
 /**
@@ -98,7 +101,7 @@ interface CodeTableOptions {
 /**
  * Splits HTML content by newlines while preserving tag nesting.
  * This ensures that multi-line spans (like those from syntax highlighters) are correctly closed and reopened on each line.
- * 
+ *
  * @param html - The HTML string to split.
  * @returns An array of HTML strings, one for each line.
  */
@@ -110,7 +113,8 @@ function splitHtmlByLines(html: string): string[] {
   let match;
 
   while ((match = regex.exec(html)) !== null) {
-    const [_, tag, text] = match;
+    const tag = match[1];
+    const text = match[2];
     if (tag) {
       if (tag.startsWith('</')) {
         stack.pop();
@@ -122,15 +126,13 @@ function splitHtmlByLines(html: string): string[] {
       const parts = text.split('\n');
       parts.forEach((part, i) => {
         if (i > 0) {
-          // Close tags reverse
           for (let j = stack.length - 1; j >= 0; j--) {
             const tagName = stack[j].match(/<(\w+)/)?.[1];
             if (tagName) currentLine += `</${tagName}>`;
           }
           lines.push(currentLine);
           currentLine = '';
-          // Re-open tags forward
-          stack.forEach(t => currentLine += t);
+          stack.forEach((t) => (currentLine += t));
         }
         currentLine += part;
       });
@@ -142,16 +144,21 @@ function splitHtmlByLines(html: string): string[] {
 
 /**
  * Generates the HTML table structure for code blocks with line numbers.
- * 
+ *
  * @param code - The raw code content.
  * @param displayStart - The starting line number to display.
  * @param lang - The programming language for syntax highlighting.
  * @param options - Configuration options for the code table.
  * @returns The complete HTML string for the code block.
  */
-function generateCodeTable(code: string, displayStart: number = 1, lang: string = '', options: CodeTableOptions = {}): string {
+function generateCodeTable(
+  code: string,
+  displayStart: number = 1,
+  lang: string = '',
+  options: CodeTableOptions = {}
+): string {
   const codeTrimmed = code.replace(/\n$/, '');
-  
+
   let highlightedCode = '';
   if (lang && hljs.getLanguage(lang)) {
     try {
@@ -164,7 +171,7 @@ function generateCodeTable(code: string, displayStart: number = 1, lang: string 
   }
 
   const htmlLines = splitHtmlByLines(highlightedCode);
-  
+
   let titleText = '';
   if (options.enableTitle) {
     titleText = options.customTitle || '';
@@ -175,12 +182,14 @@ function generateCodeTable(code: string, displayStart: number = 1, lang: string 
 
   const wordWrapClass = options.wordWrap === false ? 'minidoc-no-wrap' : 'minidoc-word-wrap';
   const langClass = lang ? 'language-' + lang : '';
-  
-  const rows = htmlLines.map((lineContent, i) => {
-    const lineNum = displayStart + i;
-    const content = lineContent.length > 0 ? lineContent : ' '; 
-    return `<tr><td class="minidoc-line-num">${lineNum}</td><td class="minidoc-line-code"><pre><code class="hljs ${langClass}">${content}</code></pre></td></tr>`;
-  }).join('');
+
+  const rows = htmlLines
+    .map((lineContent, i) => {
+      const lineNum = displayStart + i;
+      const content = lineContent.length > 0 ? lineContent : ' ';
+      return `<tr><td class="minidoc-line-num">${lineNum}</td><td class="minidoc-line-code"><pre><code class="hljs ${langClass}">${content}</code></pre></td></tr>`;
+    })
+    .join('');
 
   const tableHtml = `<div class="minidoc-code-wrapper ${wordWrapClass}"><table class="minidoc-table"><tbody>${rows}</tbody></table></div>`;
 
@@ -191,9 +200,9 @@ function generateCodeTable(code: string, displayStart: number = 1, lang: string 
     html = `<details class="minidoc-details" ${openAttr}><summary class="minidoc-summary"><span>${summaryContent}</span><span class="minidoc-summary-icon"><svg aria-hidden="true" height="16" viewBox="0 0 16 16" version="1.1" width="16" data-view-component="true" class="octicon octicon-chevron-down"><path d="M12.78 6.22a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L3.22 7.28a.75.75 0 0 1 1.06-1.06L8 9.94l3.72-3.72a.75.75 0 0 1 1.06 0Z"></path></svg></span></summary>${tableHtml}</details>`;
   } else {
     if (titleText) {
-        html = `<div class="minidoc-block-container"><div class="minidoc-title">${titleText}</div>${tableHtml}</div>`;
+      html = `<div class="minidoc-block-container"><div class="minidoc-title">${titleText}</div>${tableHtml}</div>`;
     } else {
-        html = tableHtml;
+      html = tableHtml;
     }
   }
 
@@ -202,16 +211,16 @@ function generateCodeTable(code: string, displayStart: number = 1, lang: string 
 
 /**
  * Processes the input markdown content and produces a result.
- * 
+ *
  * @param {string} content - The markdown content to process.
  * @param {MinidocOptions} [options={}] - Configuration options.
  * @returns {ProcessResult} The result of the processing.
  */
 export function processContent(content: string, options: MinidocOptions = {}): ProcessResult {
-  const title = options.title || "Minidoc";
+  const title = options.title || 'Minidoc';
   const cwd = options.cwd || process.cwd();
   const wordWrap = options.wordWrap !== undefined ? options.wordWrap : true;
-  
+
   if (options.verbose) {
     console.log(`Processing content with title: ${title}`);
   }
@@ -219,11 +228,13 @@ export function processContent(content: string, options: MinidocOptions = {}): P
   const md = new MarkdownIt({
     html: true,
     linkify: true,
-    typographer: true
+    typographer: true,
   });
 
-  // Override fence renderer to use Table layout with Highlight.js
   md.renderer.rules.fence = (tokens, idx, mdOptions, env, self) => {
+    void mdOptions;
+    void env;
+    void self;
     const token = tokens[idx];
     const content = token.content;
     const info = token.info ? md.utils.unescapeAll(token.info).trim() : '';
@@ -231,7 +242,6 @@ export function processContent(content: string, options: MinidocOptions = {}): P
     return generateCodeTable(content, 1, langName, { wordWrap });
   };
 
-  // Implement GFM Alerts and quote transformation
   md.core.ruler.push('gfm_alerts', (state) => {
     const tokens = state.tokens;
     for (let i = 0; i < tokens.length; i++) {
@@ -241,24 +251,25 @@ export function processContent(content: string, options: MinidocOptions = {}): P
         let alertType = '';
         let alertTitle = '';
 
-        // Check next tokens for paragraph and [!TYPE]
         let j = i + 1;
         while (j < tokens.length && tokens[j].type !== 'blockquote_close') {
           if (tokens[j].type === 'inline') {
             const inlineToken = tokens[j];
             const content = inlineToken.content;
             const match = content.match(/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]/);
-            
+
             if (match) {
               isAlert = true;
               alertType = match[1].toLowerCase();
               alertTitle = match[1];
 
-              // Remove the marker from the text content
               if (inlineToken.children && inlineToken.children.length > 0) {
                 const firstChild = inlineToken.children[0];
                 if (firstChild.type === 'text') {
-                  firstChild.content = firstChild.content.replace(/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s?/, '');
+                  firstChild.content = firstChild.content.replace(
+                    /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s?/,
+                    ''
+                  );
                 }
               }
               break;
@@ -267,19 +278,16 @@ export function processContent(content: string, options: MinidocOptions = {}): P
           j++;
         }
 
-        // Apply Alert Style
         if (isAlert) {
           openToken.attrJoin('class', `markdown-alert markdown-alert-${alertType}`);
-          
+
           const icon = ICONS[alertType] || '';
           const titleToken = new state.Token('html_block', '', 0);
           titleToken.content = `<p class="markdown-alert-title">${icon}${alertTitle}</p>`;
           tokens.splice(i + 1, 0, titleToken);
-          
         } else {
-          // Normal Blockquote -> Quote Alert
           openToken.attrJoin('class', `markdown-alert markdown-alert-quote`);
-          
+
           const icon = ICONS.quote || '';
           const titleToken = new state.Token('html_block', '', 0);
           titleToken.content = `<p class="markdown-alert-title">${icon}QUOTE</p>`;
@@ -289,67 +297,75 @@ export function processContent(content: string, options: MinidocOptions = {}): P
     }
   });
 
+  const quoteRegex =
+    /{{\s*"([^"]+)"\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*(\d+))?(?:\s*,\s*(true|false))?(?:\s*,\s*(true|false))?(?:\s*,\s*(true|false))?(?:\s*,\s*"([^"]*)")?(?:\s*,\s*(true|false))?\s*}}/g;
 
-  /**
-   * Process custom file inclusion syntax:
-   * {{ "path", start, end, [displayStart], [collapsible], [defaultCollapsed], [enableTitle], [customTitle], [wordWrap] }}
-   * 
-   * Example:
-   * {{ "src/index.ts", 1, 10, 1, true, false, true, "My Code", false }}
-   */
-  const quoteRegex = /{{\s*"([^"]+)"\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*(\d+))?(?:\s*,\s*(true|false))?(?:\s*,\s*(true|false))?(?:\s*,\s*(true|false))?(?:\s*,\s*"([^"]*)")?(?:\s*,\s*(true|false))?\s*}}/g;
-  
-  let preProcessedContent = content.replace(quoteRegex, (match, filePath, startStr, endStr, displayStartStr, collapsibleStr, defaultCollapsedStr, enableTitleStr, customTitleStr, wordWrapStr) => {
-    try {
-      const start = parseInt(startStr, 10);
-      const end = parseInt(endStr, 10);
-      const displayStart = displayStartStr ? parseInt(displayStartStr, 10) : start;
-      
-      const isCollapsible = collapsibleStr === 'true';
-      const defaultCollapsed = defaultCollapsedStr === 'true';
-      const enableTitle = enableTitleStr === 'true';
-      const customTitle = customTitleStr || undefined;
-      const localWordWrap = wordWrapStr ? (wordWrapStr === 'true') : wordWrap;
+  const preProcessedContent = content.replace(
+    quoteRegex,
+    (
+      match,
+      filePath,
+      startStr,
+      endStr,
+      displayStartStr,
+      collapsibleStr,
+      defaultCollapsedStr,
+      enableTitleStr,
+      customTitleStr,
+      wordWrapStr
+    ) => {
+      try {
+        const start = parseInt(startStr, 10);
+        const end = parseInt(endStr, 10);
+        const displayStart = displayStartStr ? parseInt(displayStartStr, 10) : start;
 
-      const absPath = path.resolve(cwd, filePath);
-      
-      if (!fs.existsSync(absPath)) {
-        return `<!-- Error: File not found ${filePath} -->`;
+        const isCollapsible = collapsibleStr === 'true';
+        const defaultCollapsed = defaultCollapsedStr === 'true';
+        const enableTitle = enableTitleStr === 'true';
+        const customTitle = customTitleStr || undefined;
+        const localWordWrap = wordWrapStr ? wordWrapStr === 'true' : wordWrap;
+
+        const absPath = path.resolve(cwd, filePath);
+
+        if (!fs.existsSync(absPath)) {
+          return `<!-- Error: File not found ${filePath} -->`;
+        }
+
+        const fileContent = fs.readFileSync(absPath, 'utf-8');
+        const lines = fileContent.split(/\r?\n/);
+
+        if (start < 1 || end > lines.length || start > end) {
+          return `<!-- Error: Invalid line range ${start}-${end} -->`;
+        }
+
+        const selectedLines = lines.slice(start - 1, end);
+        const code = selectedLines.join('\n');
+
+        const ext = path.extname(filePath).substring(1);
+
+        return generateCodeTable(code, displayCodeStart(displayStart), ext, {
+          isCollapsible,
+          defaultCollapsed,
+          enableTitle,
+          customTitle,
+          filePath,
+          startLine: start,
+          endLine: end,
+          wordWrap: localWordWrap,
+        });
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : String(e);
+        return `<!-- Error processing quote: ${message} -->`;
       }
-
-      const fileContent = fs.readFileSync(absPath, 'utf-8');
-      const lines = fileContent.split(/\r?\n/);
-      
-      if (start < 1 || end > lines.length || start > end) {
-        return `<!-- Error: Invalid line range ${start}-${end} -->`;
-      }
-
-      const selectedLines = lines.slice(start - 1, end);
-      const code = selectedLines.join('\n');
-      
-      // Attempt to guess language from extension
-      const ext = path.extname(filePath).substring(1);
-      
-      return generateCodeTable(code, displayCodeStart(displayStart), ext, {
-        isCollapsible,
-        defaultCollapsed,
-        enableTitle,
-        customTitle,
-        filePath,
-        startLine: start,
-        endLine: end,
-        wordWrap: localWordWrap
-      }); 
-    } catch (e: any) {
-      return `<!-- Error processing quote: ${e.message} -->`;
     }
-  });
-  
-  function displayCodeStart(num: number) { return isNaN(num) ? 1 : num; }
+  );
+
+  function displayCodeStart(num: number) {
+    return isNaN(num) ? 1 : num;
+  }
 
   const htmlOutput = md.render(preProcessedContent);
 
-  // Wrap in full HTML page structure
   const fullHtml = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -370,16 +386,16 @@ ${htmlOutput}
     output: fullHtml,
     metadata: {
       title,
-      processedAt: new Date().toISOString()
-    }
+      processedAt: new Date().toISOString(),
+    },
   };
 }
 
 function escapeHtml(text: string): string {
   return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }

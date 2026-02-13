@@ -4,7 +4,7 @@ Minidoc is a lightweight, powerful Markdown documentation generator designed for
 
 ## Features
 
-- **Advanced Code Blocks**: 
+- **Advanced Code Blocks**:
   - Table-based layout with row-per-line alignment.
   - Sticky line numbers for horizontal scrolling.
   - Syntax highlighting via [highlight.js](https://highlightjs.org/).
@@ -66,17 +66,20 @@ Minidoc allows you to include code snippets from external files using the `{{ ..
 
 **Examples:**
 
-*Basic inclusion:*
+_Basic inclusion:_
+
 ```
 {{ "src/index.ts", 1, 10 }}
 ```
 
-*Collapsible block with title:*
+_Collapsible block with title:_
+
 ```
 {{ "src/core.ts", 50, 80, 50, true, true, true, "Core Logic" }}
 ```
 
-*No-wrap specific block:*
+_No-wrap specific block:_
+
 ```
 {{ "src/utils.ts", 1, 20, 1, false, false, true, "Utils", false }}
 ```

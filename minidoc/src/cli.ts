@@ -3,11 +3,7 @@ import { processContent } from './core';
 import fs from 'fs';
 import path from 'path';
 
-// Define the CLI
-program
-  .name('minidoc')
-  .description('A minimal documentation generator CLI')
-  .version('1.0.0');
+program.name('minidoc').description('A minimal documentation generator CLI').version('1.0.0');
 
 program
   .command('build')
@@ -19,7 +15,7 @@ program
   .action((file, options) => {
     try {
       const filePath = path.resolve(process.cwd(), file);
-      
+
       if (!fs.existsSync(filePath)) {
         console.error(`Error: File not found at ${filePath}`);
         process.exit(1);
@@ -30,10 +26,10 @@ program
       }
 
       const content = fs.readFileSync(filePath, 'utf-8');
-      
+
       const result = processContent(content, {
         title: options.title,
-        verbose: options.verbose
+        verbose: options.verbose,
       });
 
       if (options.output) {
@@ -43,9 +39,9 @@ program
       } else {
         console.log(result.output);
       }
-
-    } catch (error: any) {
-      console.error('An error occurred:', error.message);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('An error occurred:', message);
       process.exit(1);
     }
   });
