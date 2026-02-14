@@ -40,6 +40,29 @@ body {
   position: relative;
 }
 
+.minidoc-code-wrapper-with-copy {
+  padding-top: 32px;
+}
+
+.minidoc-copy-button {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  border: 1px solid #d0d7de;
+  background: #ffffff;
+  color: #24292f;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.minidoc-copy-button.minidoc-copied {
+  background: #dafbe1;
+  border-color: #2da44e;
+  color: #1a7f37;
+}
+
 .minidoc-word-wrap .minidoc-table {
   table-layout: fixed;
 }
@@ -180,6 +203,91 @@ details[open] .minidoc-summary-icon svg {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   color: #24292f;
   border-bottom: 1px solid #d0d7de;
+}
+
+.minidoc-mermaid {
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  margin: 1rem 0;
+  overflow: hidden;
+}
+
+.minidoc-mermaid-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #f6f8fa;
+  border-bottom: 1px solid #d0d7de;
+}
+
+.minidoc-mermaid-toggle {
+  display: flex;
+  gap: 6px;
+}
+
+.minidoc-mermaid-button {
+  font-size: 12px;
+  padding: 2px 8px;
+  border: 1px solid #d0d7de;
+  background: #ffffff;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #24292f;
+}
+
+.minidoc-mermaid-button.minidoc-active {
+  background: #0969da;
+  border-color: #0969da;
+  color: #ffffff;
+}
+
+.minidoc-mermaid-diagram {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  padding: 12px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+}
+
+.minidoc-mermaid-diagram .mermaid {
+  font-family: 'trebuchet ms', verdana, arial, sans-serif;
+}
+
+.minidoc-mermaid-diagram.minidoc-panning {
+  cursor: grabbing;
+}
+
+.minidoc-mermaid-diagram svg {
+  max-width: 100%;
+  height: auto;
+  user-select: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+}
+
+.minidoc-mermaid-pan {
+  display: inline-block;
+  transform: translate(0px, 0px);
+  transform-origin: center center;
+}
+
+.minidoc-mermaid-source {
+  padding: 0;
+}
+
+.minidoc-mermaid-source .minidoc-code-wrapper {
+  margin: 0;
+  border: none;
+  border-radius: 0;
 }
 
 /* Inline Code */

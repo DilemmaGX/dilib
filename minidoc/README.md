@@ -1,52 +1,46 @@
-# Minidoc
+# @dilemmagx/minidoc
 
-Minidoc is a lightweight, powerful Markdown documentation generator designed for creating beautiful, code-centric documentation. It extends standard Markdown with advanced code block features, GitHub Flavored Markdown (GFM) alerts, and seamless file inclusion capabilities.
+Minidoc is a lightweight Markdown-to-HTML documentation generator designed for code-heavy projects. It features advanced code blocks, file inclusion, GFM alerts, and native Mermaid diagram support.
 
 ## Features
 
-- **Advanced Code Blocks**:
-  - Table-based layout with row-per-line alignment.
-  - Sticky line numbers for horizontal scrolling.
-  - Syntax highlighting via [highlight.js](https://highlightjs.org/).
-  - Wrap vs. No-wrap support.
-- **Collapsible Code Sections**: Easily create collapsible code blocks with optional titles.
-- **File Inclusion**: Embed specific lines from source files directly into your documentation using a custom syntax.
-- **GitHub Flavored Markdown Alerts**: Native support for GFM alerts (Note, Tip, Important, Warning, Caution) with proper styling and icons.
-- **Beautiful Typography**: Uses "Maple Mono NF CN" font for code and system fonts for UI.
+- **Advanced Code Blocks**: Sticky line numbers, table layout, and copy buttons.
+- **File Inclusion**: Include specific line ranges from source files directly into your documentation.
+- **Mermaid Support**: Native rendering of Mermaid diagrams with zoom, pan, and source view toggling.
+- **GFM Alerts**: GitHub-flavored markdown alerts (Note, Tip, Important, Warning, Caution).
+- **Clean Typography**: Optimized for readability with responsive design.
+- **Collapsible Sections**: Organize content with collapsible details blocks.
 
-## Installation
+## Install
 
 ```bash
 npm install @dilemmagx/minidoc
 ```
 
-## Usage
-
-Minidoc is a CLI tool for generating documentation from Markdown files.
+## CLI Usage
 
 ```bash
-minidoc <input-file> [output-file] [options]
+minidoc build <input-file> [options]
 ```
 
-**Options:**
+### Options
 
-- `-t, --title <title>`: Set the title of the generated HTML page.
-- `--no-wrap`: Disable word wrapping for code blocks (enables horizontal scrolling).
+- `-o, --output <path>`: Specify the output HTML file path.
+- `-t, --title <title>`: Set the HTML page title (default: "Minidoc").
 - `-v, --verbose`: Enable verbose logging.
+- `--no-copy`: Disable the copy button on code blocks.
 
-**Example:**
+### Example
 
 ```bash
-minidoc docs/index.md docs/index.html --title "My Documentation"
+minidoc build docs/index.md -o docs/index.html --title "My Documentation"
 ```
 
 ## Syntax Guide
 
 ### File Inclusion
 
-Minidoc allows you to include code snippets from external files using the `{{ ... }}` syntax. This is perfect for keeping your documentation in sync with your actual code.
-
-**Syntax:**
+Include code snippets from other files using the `{{ ... }}` syntax.
 
 ```
 {{ "filePath", startLine, endLine, [displayStartLine], [isCollapsible], [defaultCollapsed], [enableTitle], [customTitle], [wordWrap] }}
@@ -54,39 +48,48 @@ Minidoc allows you to include code snippets from external files using the `{{ ..
 
 **Parameters:**
 
-1.  `filePath` (string): Path to the source file (relative to `cwd`).
-2.  `startLine` (number): Starting line number (1-based).
-3.  `endLine` (number): Ending line number (1-based).
-4.  `displayStartLine` (number, optional): Line number to display in the gutter (default: `startLine`).
-5.  `isCollapsible` (boolean, optional): Whether the block is collapsible (default: `false`).
-6.  `defaultCollapsed` (boolean, optional): Whether it starts collapsed (default: `false`).
-7.  `enableTitle` (boolean, optional): Whether to show a title header (default: `false`).
-8.  `customTitle` (string, optional): Custom title text. If empty and title enabled, shows `path:start-end`.
-9.  `wordWrap` (boolean, optional): Override global word wrap setting for this block.
+1. `filePath` (string): Path to the source file (relative to `cwd`).
+2. `startLine` (number): Starting line number (1-based).
+3. `endLine` (number): Ending line number (1-based).
+4. `displayStartLine` (number, optional): Line number shown in the gutter.
+5. `isCollapsible` (boolean, optional): Enable collapsible block.
+6. `defaultCollapsed` (boolean, optional): Start collapsed.
+7. `enableTitle` (boolean, optional): Show a title header.
+8. `customTitle` (string, optional): Custom title text.
+9. `wordWrap` (boolean, optional): Override global wrap setting.
 
 **Examples:**
-
-_Basic inclusion:_
 
 ```
 {{ "src/index.ts", 1, 10 }}
 ```
 
-_Collapsible block with title:_
-
 ```
 {{ "src/core.ts", 50, 80, 50, true, true, true, "Core Logic" }}
 ```
 
-_No-wrap specific block:_
+### Mermaid Diagrams
 
+Minidoc supports Mermaid diagrams out of the box. Use the `mermaid` language fence.
+
+````markdown
+```mermaid
+graph TD;
+    A-->B;
+    A-->C;
+    B-->D;
+    C-->D;
 ```
-{{ "src/utils.ts", 1, 20, 1, false, false, true, "Utils", false }}
-```
+````
+
+**Features:**
+- **Zoom & Pan**: Use mouse wheel to zoom, drag to pan.
+- **Source View**: Toggle between the rendered diagram and the source code.
+- **Copy**: Copy the Mermaid source code to clipboard.
 
 ### GFM Alerts
 
-Minidoc supports standard GitHub Flavored Markdown alerts:
+Standard GitHub Flavored Markdown alerts are supported.
 
 ```markdown
 > [!NOTE]

@@ -1,0 +1,45 @@
+{
+  "name": "@dilemmagx/palette",
+  "version": "0.0.1",
+  "description": "A palette toolkit.",
+  "license": "GPL-3.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "author": "DilemmaGX",
+  "homepage": "https://github.com/DilemmaGX/dilib/tree/main/palette#readme",
+  "bugs": {
+    "url": "https://github.com/DilemmaGX/dilib/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/DilemmaGX/dilib.git",
+    "directory": "palette"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "package.json"
+  ],
+  "keywords": [
+    "palette",
+    "color"
+  ],
+  "bin": {
+    "palette": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json --emitDeclarationOnly && esbuild src/index.ts --bundle --outfile=dist/index.js --platform=node --target=node18 --sourcemap --minify && esbuild src/cli.ts --bundle --outfile=dist/cli.js --platform=node --target=node18 --banner:js=\"#!/usr/bin/env node\""
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.3",
+    "esbuild": "^0.27.3",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@material/material-color-utilities": "^0.3.0",
+    "sharp": "^0.34.3"
+  }
+}

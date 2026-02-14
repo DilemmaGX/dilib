@@ -39,6 +39,8 @@ export interface MinidocOptions {
    * @default true
    */
   wordWrap?: boolean;
+
+  showCopyButton?: boolean;
 }
 
 /**
@@ -96,6 +98,8 @@ interface CodeTableOptions {
   endLine?: number;
   /** Whether to enable word wrapping. */
   wordWrap?: boolean;
+
+  showCopyButton?: boolean;
 }
 
 /**
@@ -142,6 +146,23 @@ function splitHtmlByLines(html: string): string[] {
   return lines;
 }
 
+
+
+/**
+ * Builds the HTML for a copy button.
+ *
+ * @param code - The code content to be copied.
+ * @param enabled - Whether the copy button is enabled.
+ * @returns The HTML string for the copy button, or an empty string if disabled.
+ */
+function buildCopyButton(code: string, enabled?: boolean): string {
+  if (!enabled) {
+    return '';
+  }
+  const encoded = encodeURIComponent(code);
+  return `<button class="minidoc-copy-button" type="button" data-code="${encoded}">Copy</button>`;
+}
+
 /**
  * Generates the HTML table structure for code blocks with line numbers.
  *
@@ -182,6 +203,10 @@ function generateCodeTable(
 
   const wordWrapClass = options.wordWrap === false ? 'minidoc-no-wrap' : 'minidoc-word-wrap';
   const langClass = lang ? 'language-' + lang : '';
+  const copyButton = buildCopyButton(codeTrimmed, options.showCopyButton);
+  const wrapperClass = options.showCopyButton
+    ? `${wordWrapClass} minidoc-code-wrapper-with-copy`
+    : wordWrapClass;
 
   const rows = htmlLines
     .map((lineContent, i) => {
@@ -191,7 +216,7 @@ function generateCodeTable(
     })
     .join('');
 
-  const tableHtml = `<div class="minidoc-code-wrapper ${wordWrapClass}"><table class="minidoc-table"><tbody>${rows}</tbody></table></div>`;
+  const tableHtml = `<div class="minidoc-code-wrapper ${wrapperClass}">${copyButton}<table class="minidoc-table"><tbody>${rows}</tbody></table></div>`;
 
   let html = '';
   if (options.isCollapsible) {
@@ -210,16 +235,46 @@ function generateCodeTable(
 }
 
 /**
+ * Generates the HTML structure for a Mermaid diagram block.
+ * Includes a toolbar with view switching (Diagram/Source) and copy functionality.
+ *
+ * @param code - The Mermaid code.
+ * @param options - Configuration options.
+ * @returns The complete HTML string for the Mermaid block.
+ */
+function generateMermaidBlock(
+  code: string,
+  options: { wordWrap: boolean; showCopyButton: boolean }
+): string {
+  const codeTrimmed = code.replace(/\n$/, '');
+  const encoded = encodeURIComponent(codeTrimmed);
+  const copyButton = buildCopyButton(codeTrimmed, options.showCopyButton);
+  const sourceHtml = generateCodeTable(codeTrimmed, 1, 'mermaid', {
+    wordWrap: options.wordWrap,
+    showCopyButton: false,
+  });
+  const toolbar = `<div class="minidoc-mermaid-toolbar"><div class="minidoc-mermaid-toggle"><button type="button" class="minidoc-mermaid-button minidoc-active" data-view="diagram">Diagram</button><button type="button" class="minidoc-mermaid-button" data-view="source">Source</button></div>${copyButton}</div>`;
+  const diagramHtml = `<div class="minidoc-mermaid-diagram"><div class="minidoc-mermaid-pan"><pre class="mermaid">${escapeHtml(
+    codeTrimmed
+  )}</pre></div></div>`;
+  return `<div class="minidoc-mermaid" data-code="${encoded}">${toolbar}${diagramHtml}<div class="minidoc-mermaid-source" hidden>${sourceHtml}</div></div>`;
+}
+
+/**
  * Processes the input markdown content and produces a result.
  *
  * @param {string} content - The markdown content to process.
  * @param {MinidocOptions} [options={}] - Configuration options.
  * @returns {ProcessResult} The result of the processing.
  */
-export function processContent(content: string, options: MinidocOptions = {}): ProcessResult {
+export async function processContent(
+  content: string,
+  options: MinidocOptions = {}
+): Promise<ProcessResult> {
   const title = options.title || 'Minidoc';
   const cwd = options.cwd || process.cwd();
   const wordWrap = options.wordWrap !== undefined ? options.wordWrap : true;
+  const showCopyButton = options.showCopyButton !== undefined ? options.showCopyButton : true;
 
   if (options.verbose) {
     console.log(`Processing content with title: ${title}`);
@@ -239,7 +294,10 @@ export function processContent(content: string, options: MinidocOptions = {}): P
     const content = token.content;
     const info = token.info ? md.utils.unescapeAll(token.info).trim() : '';
     const langName = info.split(/\s+/)[0];
-    return generateCodeTable(content, 1, langName, { wordWrap });
+    if (langName.toLowerCase() === 'mermaid') {
+      return generateCodeTable(content, 1, langName, { wordWrap, showCopyButton });
+    }
+    return generateCodeTable(content, 1, langName, { wordWrap, showCopyButton });
   };
 
   md.core.ruler.push('gfm_alerts', (state) => {
@@ -300,7 +358,15 @@ export function processContent(content: string, options: MinidocOptions = {}): P
   const quoteRegex =
     /{{\s*"([^"]+)"\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*(\d+))?(?:\s*,\s*(true|false))?(?:\s*,\s*(true|false))?(?:\s*,\s*(true|false))?(?:\s*,\s*"([^"]*)")?(?:\s*,\s*(true|false))?\s*}}/g;
 
-  const preProcessedContent = content.replace(
+  const mermaidBlocks: { placeholder: string; code: string }[] = [];
+  const mermaidRegex = /```mermaid\s*([\s\S]*?)```/g;
+  const contentWithMermaidPlaceholders = content.replace(mermaidRegex, (match, code) => {
+    const placeholder = `<!--MINIDOC_MERMAID_${mermaidBlocks.length}-->`;
+    mermaidBlocks.push({ placeholder, code });
+    return placeholder;
+  });
+
+  const preProcessedContent = contentWithMermaidPlaceholders.replace(
     quoteRegex,
     (
       match,
@@ -352,6 +418,7 @@ export function processContent(content: string, options: MinidocOptions = {}): P
           startLine: start,
           endLine: end,
           wordWrap: localWordWrap,
+          showCopyButton,
         });
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : String(e);
@@ -360,11 +427,20 @@ export function processContent(content: string, options: MinidocOptions = {}): P
     }
   );
 
+  /**
+   * Helper to ensure the display start line is a valid number.
+   * @param num - The number to check.
+   * @returns The number or 1 if invalid.
+   */
   function displayCodeStart(num: number) {
     return isNaN(num) ? 1 : num;
   }
 
-  const htmlOutput = md.render(preProcessedContent);
+  let htmlOutput = md.render(preProcessedContent);
+  for (const block of mermaidBlocks) {
+    const blockHtml = generateMermaidBlock(block.code, { wordWrap, showCopyButton });
+    htmlOutput = htmlOutput.replace(block.placeholder, blockHtml);
+  }
 
   const fullHtml = `<!DOCTYPE html>
 <html lang="en">
@@ -378,6 +454,159 @@ ${defaultCss}
 </head>
 <body>
 ${htmlOutput}
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+const copyButtons = document.querySelectorAll('.minidoc-copy-button');
+const whenLoaded = async () => {
+  await new Promise((resolve) => {
+    if (document.readyState === 'complete') {
+      resolve(null);
+    } else {
+      window.addEventListener('load', () => resolve(null), { once: true });
+    }
+  });
+  if (document.fonts && document.fonts.ready) {
+    await document.fonts.ready;
+  }
+};
+const copyWithFallback = async (text) => {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', 'readonly');
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  document.execCommand('copy');
+  document.body.removeChild(textarea);
+};
+for (const button of copyButtons) {
+  button.addEventListener('click', async () => {
+    const encoded = button.getAttribute('data-code') || '';
+    const text = decodeURIComponent(encoded);
+    const previous = button.textContent || 'Copy';
+    try {
+      await copyWithFallback(text);
+      button.classList.add('minidoc-copied');
+      button.textContent = 'Copied';
+      setTimeout(() => {
+        button.textContent = previous;
+        button.classList.remove('minidoc-copied');
+      }, 1200);
+    } catch (e) {
+      button.textContent = previous;
+    }
+  });
+}
+const mermaidBlocks = document.querySelectorAll('.minidoc-mermaid');
+for (const block of mermaidBlocks) {
+  const diagramView = block.querySelector('.minidoc-mermaid-diagram');
+  const sourceView = block.querySelector('.minidoc-mermaid-source');
+  const buttons = block.querySelectorAll('.minidoc-mermaid-button');
+  for (const btn of buttons) {
+    btn.addEventListener('click', () => {
+      const view = btn.getAttribute('data-view');
+      if (view === 'source') {
+        if (diagramView) diagramView.setAttribute('hidden', '');
+        if (sourceView) sourceView.removeAttribute('hidden');
+      } else {
+        if (diagramView) diagramView.removeAttribute('hidden');
+        if (sourceView) sourceView.setAttribute('hidden', '');
+      }
+      for (const other of buttons) {
+        other.classList.remove('minidoc-active');
+      }
+      btn.classList.add('minidoc-active');
+    });
+  }
+  if (!diagramView) {
+    continue;
+  }
+  const pan = diagramView.querySelector('.minidoc-mermaid-pan');
+  if (!pan) {
+    continue;
+  }
+  let isPanning = false;
+  let startX = 0;
+  let startY = 0;
+  let originX = 0;
+  let originY = 0;
+  const defaultScale = 2;
+  const readPosition = () => {
+    const x = Number.parseFloat(pan.getAttribute('data-x') || '0');
+    const y = Number.parseFloat(pan.getAttribute('data-y') || '0');
+    return { x, y };
+  };
+  const readScale = () => Number.parseFloat(pan.getAttribute('data-scale') || String(defaultScale));
+  const applyTransform = (x, y, scale) => {
+    pan.setAttribute('data-x', String(x));
+    pan.setAttribute('data-y', String(y));
+    pan.setAttribute('data-scale', String(scale));
+    pan.style.transform = 'translate(' + x + 'px, ' + y + 'px) scale(' + scale + ')';
+  };
+  const applyPosition = (x, y) => {
+    applyTransform(x, y, readScale());
+  };
+  diagramView.addEventListener('pointerdown', (event) => {
+    isPanning = true;
+    diagramView.classList.add('minidoc-panning');
+    diagramView.setPointerCapture(event.pointerId);
+    startX = event.clientX;
+    startY = event.clientY;
+    const current = readPosition();
+    originX = current.x;
+    originY = current.y;
+  });
+  diagramView.addEventListener('pointermove', (event) => {
+    if (!isPanning) {
+      return;
+    }
+    const dx = event.clientX - startX;
+    const dy = event.clientY - startY;
+    applyPosition(originX + dx, originY + dy);
+  });
+  diagramView.addEventListener('wheel', (event) => {
+    event.preventDefault();
+    const current = readPosition();
+    const currentScale = readScale();
+    const step = event.deltaY > 0 ? 0.9 : 1.1;
+    const nextScale = Math.min(4, Math.max(0.2, currentScale * step));
+    applyTransform(current.x, current.y, nextScale);
+  });
+  const stopPan = () => {
+    if (!isPanning) {
+      return;
+    }
+    isPanning = false;
+    diagramView.classList.remove('minidoc-panning');
+  };
+  diagramView.addEventListener('pointerup', stopPan);
+  diagramView.addEventListener('pointerleave', stopPan);
+  diagramView.addEventListener('pointercancel', stopPan);
+}
+mermaid.initialize({
+  startOnLoad: false,
+  securityLevel: 'loose',
+});
+await whenLoaded();
+await mermaid.run({
+  querySelector: '.minidoc-mermaid-diagram .mermaid',
+});
+for (const block of mermaidBlocks) {
+  const diagramView = block.querySelector('.minidoc-mermaid-diagram');
+  const pan = diagramView ? diagramView.querySelector('.minidoc-mermaid-pan') : null;
+  if (pan) {
+    const defaultScale = 2;
+    pan.setAttribute('data-scale', String(defaultScale));
+    pan.style.transform = 'translate(0px, 0px) scale(' + defaultScale + ')';
+  }
+}
+</script>
 </body>
 </html>`;
 
@@ -391,6 +620,12 @@ ${htmlOutput}
   };
 }
 
+/**
+ * Escapes HTML special characters in a string.
+ *
+ * @param text - The text to escape.
+ * @returns The escaped text.
+ */
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, '&amp;')
