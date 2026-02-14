@@ -83,6 +83,7 @@ graph TD;
 ````
 
 **Features:**
+
 - **Zoom & Pan**: Use mouse wheel to zoom, drag to pan.
 - **Source View**: Toggle between the rendered diagram and the source code.
 - **Copy**: Copy the Mermaid source code to clipboard.

@@ -1,4 +1,4 @@
-import { generatePalette, listAlgorithms, type PaletteAlgorithm } from "./core";
+import { generatePalette, listAlgorithms, type PaletteAlgorithm } from './core';
 
 /**
  * Parsed CLI options.
@@ -28,12 +28,12 @@ async function run(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   if (options.help || !options.input) {
     process.stdout.write(USAGE);
-    process.stdout.write(`Algorithms: ${listAlgorithms().join(", ")}\n`);
+    process.stdout.write(`Algorithms: ${listAlgorithms().join(', ')}\n`);
     return;
   }
 
   if (isCliHexWithHash(options.input)) {
-    throw new Error("CLI HEX input must not start with #. Use RRGGBB or RGB.");
+    throw new Error('CLI HEX input must not start with #. Use RRGGBB or RGB.');
   }
 
   const algorithms = options.algorithm ? [options.algorithm] : listAlgorithms();
@@ -44,9 +44,9 @@ async function run(): Promise<void> {
     });
     const blocks = palette.colors.map((hex) => cell(hex));
     const header = formatHeader(algorithm);
-    const top = blocks.map((block) => block.top).join("");
-    const middle = blocks.map((block) => block.middle).join("");
-    const bottom = blocks.map((block) => block.bottom).join("");
+    const top = blocks.map((block) => block.top).join('');
+    const middle = blocks.map((block) => block.middle).join('');
+    const bottom = blocks.map((block) => block.bottom).join('');
     process.stdout.write(`${header}\n${top}\n${middle}\n${bottom}\n\n`);
   }
 }
@@ -59,14 +59,14 @@ function parseArgs(args: string[]): CliOptions {
   const options: CliOptions = {};
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
-    if (arg === "-h" || arg === "--help") {
+    if (arg === '-h' || arg === '--help') {
       options.help = true;
       continue;
     }
-    if (arg === "-a" || arg === "--algorithm") {
+    if (arg === '-a' || arg === '--algorithm') {
       const value = args[i + 1];
       if (!value) {
-        throw new Error("Missing algorithm value.");
+        throw new Error('Missing algorithm value.');
       }
       const algorithms = listAlgorithms();
       if (!algorithms.includes(value as PaletteAlgorithm)) {
@@ -76,14 +76,14 @@ function parseArgs(args: string[]): CliOptions {
       i += 1;
       continue;
     }
-    if (arg === "-c" || arg === "--count") {
+    if (arg === '-c' || arg === '--count') {
       const value = args[i + 1];
       if (!value) {
-        throw new Error("Missing count value.");
+        throw new Error('Missing count value.');
       }
       const parsed = Number.parseInt(value, 10);
       if (Number.isNaN(parsed) || parsed <= 0) {
-        throw new Error("Count must be a positive integer.");
+        throw new Error('Count must be a positive integer.');
       }
       options.count = parsed;
       i += 1;
@@ -112,7 +112,7 @@ function isCliHexWithHash(value: string): boolean {
  * @param algorithm Algorithm name.
  */
 function formatHeader(algorithm: string): string {
-  const label = algorithm.replace(/-/g, " ").toUpperCase();
+  const label = algorithm.replace(/-/g, ' ').toUpperCase();
   return `== ${label} ==`;
 }
 
@@ -127,8 +127,8 @@ function cell(hex: string): { top: string; middle: string; bottom: string } {
   const fg = pickTextColor(rgb);
   const bg = `\x1b[48;2;${rgb.r};${rgb.g};${rgb.b}m`;
   const fgCode = `\x1b[38;2;${fg.r};${fg.g};${fg.b}m`;
-  const reset = "\x1b[0m";
-  const blank = " ".repeat(padded.length);
+  const reset = '\x1b[0m';
+  const blank = ' '.repeat(padded.length);
   return {
     top: `${bg}${blank}${reset}`,
     middle: `${bg}${fgCode}${padded}${reset}`,
@@ -154,7 +154,7 @@ function pickTextColor(rgb: { r: number; g: number; b: number }): {
  * @param hex The HEX color string.
  */
 function hexToRgb(hex: string): { r: number; g: number; b: number } {
-  const cleaned = hex.replace("#", "");
+  const cleaned = hex.replace('#', '');
   const r = parseInt(cleaned.slice(0, 2), 16);
   const g = parseInt(cleaned.slice(2, 4), 16);
   const b = parseInt(cleaned.slice(4, 6), 16);

@@ -17,7 +17,7 @@ npm i @dilemmagx/2d-geometry
 ## Usage
 
 ```ts
-import { Point, Vector, Line } from "@dilemmagx/2d-geometry";
+import { Point, Vector, Line } from '@dilemmagx/2d-geometry';
 
 const a = new Point(0, 0);
 const b = new Point(10, 0);

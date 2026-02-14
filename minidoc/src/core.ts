@@ -146,8 +146,6 @@ function splitHtmlByLines(html: string): string[] {
   return lines;
 }
 
-
-
 /**
  * Builds the HTML for a copy button.
  *

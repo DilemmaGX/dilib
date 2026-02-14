@@ -1,4 +1,4 @@
-export type { InputType, PaletteAlgorithm, PaletteOptions, PaletteResult } from "./core";
+export type { InputType, PaletteAlgorithm, PaletteOptions, PaletteResult } from './core';
 export {
   detectInputType,
   generatePalette,
@@ -7,4 +7,4 @@ export {
   generatePaletteFromUrl,
   generatePaletteFromPath,
   listAlgorithms,
-} from "./core";
+} from './core';

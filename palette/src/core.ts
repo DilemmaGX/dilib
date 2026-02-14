@@ -1,6 +1,6 @@
-import fs from "node:fs/promises";
-import path from "node:path";
-import sharp from "sharp";
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import sharp from 'sharp';
 import {
   Hct,
   QuantizerCelebi,
@@ -8,24 +8,24 @@ import {
   TonalPalette,
   argbFromRgb,
   hexFromArgb,
-} from "@material/material-color-utilities";
+} from '@material/material-color-utilities';
 
 /**
  * Supported input types for palette generation.
  */
-export type InputType = "hex" | "datauri" | "url" | "path";
+export type InputType = 'hex' | 'datauri' | 'url' | 'path';
 
 /**
  * Supported palette algorithms.
  */
 export type PaletteAlgorithm =
-  | "analogous"
-  | "complementary"
-  | "triadic"
-  | "tetradic"
-  | "split-complementary"
-  | "monochrome"
-  | "monet";
+  | 'analogous'
+  | 'complementary'
+  | 'triadic'
+  | 'tetradic'
+  | 'split-complementary'
+  | 'monochrome'
+  | 'monet';
 
 /**
  * Options used when generating palettes.
@@ -76,16 +76,16 @@ interface HslColor {
 }
 
 const ALGORITHMS: PaletteAlgorithm[] = [
-  "analogous",
-  "complementary",
-  "triadic",
-  "tetradic",
-  "split-complementary",
-  "monochrome",
-  "monet",
+  'analogous',
+  'complementary',
+  'triadic',
+  'tetradic',
+  'split-complementary',
+  'monochrome',
+  'monet',
 ];
 
-const DEFAULT_ALGORITHM: PaletteAlgorithm = "analogous";
+const DEFAULT_ALGORITHM: PaletteAlgorithm = 'analogous';
 
 /**
  * Returns the list of supported palette algorithms.
@@ -100,10 +100,10 @@ export function listAlgorithms(): PaletteAlgorithm[] {
  */
 export function detectInputType(input: string): InputType {
   const trimmed = input.trim();
-  if (isHex(trimmed)) return "hex";
-  if (isDataUri(trimmed)) return "datauri";
-  if (isUrl(trimmed)) return "url";
-  return "path";
+  if (isHex(trimmed)) return 'hex';
+  if (isDataUri(trimmed)) return 'datauri';
+  if (isUrl(trimmed)) return 'url';
+  return 'path';
 }
 
 /**
@@ -113,12 +113,12 @@ export function detectInputType(input: string): InputType {
  */
 export async function generatePalette(
   input: string,
-  options: PaletteOptions = {},
+  options: PaletteOptions = {}
 ): Promise<PaletteResult> {
   const type = detectInputType(input);
-  if (type === "hex") return generatePaletteFromHex(input, options);
-  if (type === "datauri") return generatePaletteFromDataUri(input, options);
-  if (type === "url") return generatePaletteFromUrl(input, options);
+  if (type === 'hex') return generatePaletteFromHex(input, options);
+  if (type === 'datauri') return generatePaletteFromDataUri(input, options);
+  if (type === 'url') return generatePaletteFromUrl(input, options);
   return generatePaletteFromPath(input, options);
 }
 
@@ -129,11 +129,11 @@ export async function generatePalette(
  */
 export async function generatePaletteFromHex(
   hex: string,
-  options: PaletteOptions = {},
+  options: PaletteOptions = {}
 ): Promise<PaletteResult> {
   const normalizedHex = normalizeHex(hex);
   const baseRgb = hexToRgb(normalizedHex);
-  return buildPaletteResultFromBase(baseRgb, "hex", options.algorithm, options.count);
+  return buildPaletteResultFromBase(baseRgb, 'hex', options.algorithm, options.count);
 }
 
 /**
@@ -143,10 +143,10 @@ export async function generatePaletteFromHex(
  */
 export async function generatePaletteFromDataUri(
   dataUri: string,
-  options: PaletteOptions = {},
+  options: PaletteOptions = {}
 ): Promise<PaletteResult> {
   const buffer = decodeDataUri(dataUri);
-  return buildPaletteResultFromBuffer(buffer, "datauri", options.algorithm, options.count);
+  return buildPaletteResultFromBuffer(buffer, 'datauri', options.algorithm, options.count);
 }
 
 /**
@@ -156,10 +156,10 @@ export async function generatePaletteFromDataUri(
  */
 export async function generatePaletteFromUrl(
   url: string,
-  options: PaletteOptions = {},
+  options: PaletteOptions = {}
 ): Promise<PaletteResult> {
   const buffer = await fetchBuffer(url);
-  return buildPaletteResultFromBuffer(buffer, "url", options.algorithm, options.count);
+  return buildPaletteResultFromBuffer(buffer, 'url', options.algorithm, options.count);
 }
 
 /**
@@ -169,11 +169,11 @@ export async function generatePaletteFromUrl(
  */
 export async function generatePaletteFromPath(
   filePath: string,
-  options: PaletteOptions = {},
+  options: PaletteOptions = {}
 ): Promise<PaletteResult> {
   const resolved = path.resolve(filePath);
   const buffer = await fs.readFile(resolved);
-  return buildPaletteResultFromBuffer(buffer, "path", options.algorithm, options.count);
+  return buildPaletteResultFromBuffer(buffer, 'path', options.algorithm, options.count);
 }
 
 /**
@@ -187,11 +187,11 @@ async function buildPaletteResultFromBuffer(
   buffer: Buffer,
   inputType: InputType,
   algorithm?: PaletteAlgorithm,
-  count?: number,
+  count?: number
 ): Promise<PaletteResult> {
   const resolvedAlgorithm = resolveAlgorithm(algorithm);
   const baseRgb = await getAverageColor(buffer);
-  if (resolvedAlgorithm === "monet") {
+  if (resolvedAlgorithm === 'monet') {
     const colors = await extractMonetPalette(buffer, resolveMonetCount(count, 6));
     if (colors.length > 0) {
       return {
@@ -216,11 +216,11 @@ function buildPaletteResultFromBase(
   baseRgb: RgbColor,
   inputType: InputType,
   algorithm?: PaletteAlgorithm,
-  count?: number,
+  count?: number
 ): PaletteResult {
   const resolvedAlgorithm = resolveAlgorithm(algorithm);
   const baseHex = rgbToHex(baseRgb);
-  if (resolvedAlgorithm === "monet") {
+  if (resolvedAlgorithm === 'monet') {
     const sourceArgb = argbFromHex(baseHex);
     return {
       inputType,
@@ -244,9 +244,7 @@ function buildPaletteResultFromBase(
  * Resolves an algorithm, applying defaults and validation.
  * @param algorithm Optional algorithm override.
  */
-function resolveAlgorithm(
-  algorithm: PaletteAlgorithm | undefined,
-): PaletteAlgorithm {
+function resolveAlgorithm(algorithm: PaletteAlgorithm | undefined): PaletteAlgorithm {
   if (!algorithm) return DEFAULT_ALGORITHM;
   if (!ALGORITHMS.includes(algorithm)) {
     throw new Error(`Unknown algorithm: ${algorithm}`);
@@ -260,50 +258,32 @@ function resolveAlgorithm(
  * @param algorithm The algorithm to apply.
  * @param count Optional palette size.
  */
-function buildPaletteHsl(
-  base: HslColor,
-  algorithm: PaletteAlgorithm,
-  count?: number,
-): HslColor[] {
+function buildPaletteHsl(base: HslColor, algorithm: PaletteAlgorithm, count?: number): HslColor[] {
   const hue = normalizeHue(base.h);
   const sat = clamp(base.s, 20, 90);
   const light = clamp(base.l, 20, 80);
 
-  if (algorithm === "analogous") {
+  if (algorithm === 'analogous') {
     return buildByOffsets(hue, sat, light, resolveCount(count, 5), 40);
   }
 
-  if (algorithm === "complementary") {
-    return buildByCycle(
-      hue,
-      sat,
-      light,
-      resolveCount(count, 3),
-      [0, 180],
-      14,
-    );
+  if (algorithm === 'complementary') {
+    return buildByCycle(hue, sat, light, resolveCount(count, 3), [0, 180], 14);
   }
 
-  if (algorithm === "triadic") {
+  if (algorithm === 'triadic') {
     return buildByCycle(hue, sat, light, resolveCount(count, 3), [0, 120, 240], 10);
   }
 
-  if (algorithm === "tetradic") {
+  if (algorithm === 'tetradic') {
     return buildByCycle(hue, sat, light, resolveCount(count, 4), [0, 90, 180, 270], 8);
   }
 
-  if (algorithm === "split-complementary") {
-    return buildByCycle(
-      hue,
-      sat,
-      light,
-      resolveCount(count, 3),
-      [0, 150, 210],
-      10,
-    );
+  if (algorithm === 'split-complementary') {
+    return buildByCycle(hue, sat, light, resolveCount(count, 3), [0, 150, 210], 10);
   }
 
-  if (algorithm === "monochrome") {
+  if (algorithm === 'monochrome') {
     return buildMonochrome(hue, sat, light, resolveCount(count, 4));
   }
 
@@ -341,12 +321,12 @@ function isUrl(value: string): boolean {
 function normalizeHex(value: string): string {
   const raw = value.trim();
   if (!isHex(raw)) throw new Error(`Invalid HEX color: ${value}`);
-  const cleaned = raw.startsWith("#") ? raw.slice(1) : raw;
+  const cleaned = raw.startsWith('#') ? raw.slice(1) : raw;
   if (cleaned.length === 3) {
     const expanded = cleaned
-      .split("")
+      .split('')
       .map((char) => char + char)
-      .join("");
+      .join('');
     return `#${expanded.toUpperCase()}`;
   }
   return `#${cleaned.toUpperCase()}`;
@@ -380,7 +360,7 @@ function rgbToHex(color: RgbColor): string {
   const toHex = (value: number) =>
     Math.round(clamp(value, 0, 255))
       .toString(16)
-      .padStart(2, "0")
+      .padStart(2, '0')
       .toUpperCase();
   return `#${toHex(color.r)}${toHex(color.g)}${toHex(color.b)}`;
 }
@@ -470,7 +450,7 @@ async function getAverageColor(buffer: Buffer): Promise<RgbColor> {
  */
 async function extractMonetPalette(buffer: Buffer, count: number): Promise<string[]> {
   const { data, info } = await sharp(buffer)
-    .resize({ width: 48, height: 48, fit: "inside" })
+    .resize({ width: 48, height: 48, fit: 'inside' })
     .removeAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true });
@@ -548,7 +528,7 @@ function buildByOffsets(
   sat: number,
   light: number,
   count: number,
-  maxOffset: number,
+  maxOffset: number
 ): HslColor[] {
   const offsets = buildOffsets(count, maxOffset);
   return offsets.map((offset) => ({
@@ -573,7 +553,7 @@ function buildByCycle(
   light: number,
   count: number,
   offsets: number[],
-  lightStep: number,
+  lightStep: number
 ): HslColor[] {
   const result: HslColor[] = [];
   for (let i = 0; i < count; i += 1) {
@@ -644,10 +624,10 @@ function buildToneSteps(count: number): number[] {
  */
 function decodeDataUri(value: string): Buffer {
   if (!isDataUri(value)) {
-    throw new Error("Invalid data URI");
+    throw new Error('Invalid data URI');
   }
-  const base64 = value.split(",")[1] ?? "";
-  return Buffer.from(base64, "base64");
+  const base64 = value.split(',')[1] ?? '';
+  return Buffer.from(base64, 'base64');
 }
 
 /**

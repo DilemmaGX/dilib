@@ -64,9 +64,9 @@ import {
   generatePaletteFromUrl,
   generatePaletteFromPath,
   listAlgorithms,
-} from "@dilemmagx/palette";
+} from '@dilemmagx/palette';
 
-const result = await generatePalette("#ff7a18", { algorithm: "analogous" });
+const result = await generatePalette('#ff7a18', { algorithm: 'analogous' });
 console.log(result.colors);
 ```
 

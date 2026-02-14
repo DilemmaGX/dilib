@@ -1,0 +1,43 @@
+{
+  "name": "@dilemmagx/orchestra",
+  "version": "1.1.0",
+  "description": "A programmable node-based image synthesis and processing toolkit.",
+  "license": "GPL-3.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "author": "DilemmaGX",
+  "homepage": "https://github.com/DilemmaGX/dilib/tree/main/orchestra#readme",
+  "bugs": {
+    "url": "https://github.com/DilemmaGX/dilib/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/DilemmaGX/dilib.git",
+    "directory": "orchestra"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "package.json"
+  ],
+  "keywords": [
+    "image",
+    "processing",
+    "graph",
+    "nodes"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json --emitDeclarationOnly && esbuild src/index.ts --bundle --outfile=dist/index.js --platform=node --target=node18 --sourcemap --minify"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.3",
+    "esbuild": "^0.27.3",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "sharp": "^0.34.3"
+  }
+}
