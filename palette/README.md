@@ -54,6 +54,10 @@ Output:
 
 Monet uses image quantization and color scoring inspired by Material Color Utilities.
 
+## Presets
+
+- `getGameBoyPalette()`: Returns the classic Game Boy colors (#9bbc0f, #8bac0f, #306230, #0f380f)
+
 ## TypeScript API
 
 ```ts

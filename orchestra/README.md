@@ -139,3 +139,8 @@ const posterize = createParamNode('posterize', { step: 32 }, (_context, image, p
 const pipeline = new Pipeline().add(posterize);
 const image = await pipeline.run(sourceFromEmpty(512, 512, 'rgba8'));
 ```
+
+## License
+
+GPL-3.0
+

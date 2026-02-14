@@ -8,3 +8,5 @@ export {
   generatePaletteFromPath,
   listAlgorithms,
 } from './core';
+export { getGameBoyPalette } from './presets';
+export type { RgbaColor } from './presets';

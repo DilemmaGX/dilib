@@ -1,6 +1,6 @@
 {
   "name": "@dilemmagx/palette",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "A palette toolkit.",
   "license": "GPL-3.0",
   "publishConfig": {
@@ -21,6 +21,7 @@
   "files": [
     "dist",
     "README.md",
+    "LICENSE",
     "package.json"
   ],
   "keywords": [
