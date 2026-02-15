@@ -143,4 +143,3 @@ const image = await pipeline.run(sourceFromEmpty(512, 512, 'rgba8'));
 ## License
 
 GPL-3.0
-
