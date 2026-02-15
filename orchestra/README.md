@@ -117,14 +117,11 @@ the system font family is used when available.
 ```ts
 import { Pipeline, createImageNode, sourceFromEmpty } from '@dilemmagx/orchestra';
 
-const posterize = createImageNode(
-  'posterize',
-  { step: 32 },
-  (_context, image, params) =>
-    image.mapPixels((pixel) => {
-      const next = Math.round(pixel.r / params.step) * params.step;
-      return { r: next, g: next, b: next, a: pixel.a };
-    })
+const posterize = createImageNode('posterize', { step: 32 }, (_context, image, params) =>
+  image.mapPixels((pixel) => {
+    const next = Math.round(pixel.r / params.step) * params.step;
+    return { r: next, g: next, b: next, a: pixel.a };
+  })
 );
 
 const pipeline = new Pipeline().add(posterize);
@@ -186,6 +183,23 @@ const pipeline = new Pipeline().add(mapped);
 const image = await pipeline.run(sourceFromUrl('https://example.com/image.jpg'));
 ```
 
+## Stroke Nodes
+
+```ts
+import {
+  Pipeline,
+  createContrastStrokeNode,
+  createAlphaStrokeNode,
+  sourceFromUrl,
+} from '@dilemmagx/orchestra';
+
+const pipeline = new Pipeline()
+  .add(createAlphaStrokeNode({ alphaThreshold: 8, thickness: 2, color: '#0f172a' }))
+  .add(createContrastStrokeNode({ threshold: 28, thickness: 2, color: '#ffffff' }));
+
+const image = await pipeline.run(sourceFromUrl('https://example.com/image.png'));
+```
+
 ## Built-in Nodes
 
 - createBrightnessNode
@@ -193,7 +207,9 @@ const image = await pipeline.run(sourceFromUrl('https://example.com/image.jpg'))
 - createCircleNode
 - createConvolutionNode
 - createContrastNode
+- createContrastStrokeNode
 - createEdgeDetectNode
+- createAlphaStrokeNode
 - createFillNode
 - createGammaNode
 - createGaussianBlurNode
@@ -219,7 +235,9 @@ const image = await pipeline.run(sourceFromUrl('https://example.com/image.jpg'))
 Selectors and masking helpers:
 
 - createAlphaSelector
+- createAlphaStrokeSelector
 - createCircleSelector
+- createContrastStrokeSelector
 - createLumaSelector
 - createMaskMapNode
 - createMaskedNode

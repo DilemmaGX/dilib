@@ -155,21 +155,26 @@ export function createPixelNode<TParams>(
   run: PixelNodeRunner<TParams>,
   options: ImageNodeOptions = {}
 ): ImageNode<TParams> {
-  return createImageNode(name, params, async (context, image, resolvedParams, state) => {
-    const pixels = image.toMatrix();
-    const result = await run(pixels, {
-      context,
-      image,
-      state,
-      params: resolvedParams,
-      width: image.width,
-      height: image.height,
-    });
-    if (result instanceof ImageBuffer) {
-      return result;
-    }
-    return ImageBuffer.fromMatrix(result, image.format);
-  }, options);
+  return createImageNode(
+    name,
+    params,
+    async (context, image, resolvedParams, state) => {
+      const pixels = image.toMatrix();
+      const result = await run(pixels, {
+        context,
+        image,
+        state,
+        params: resolvedParams,
+        width: image.width,
+        height: image.height,
+      });
+      if (result instanceof ImageBuffer) {
+        return result;
+      }
+      return ImageBuffer.fromMatrix(result, image.format);
+    },
+    options
+  );
 }
 
 /**
@@ -178,15 +183,10 @@ export function createPixelNode<TParams>(
 export function node<TParams>(definition: SimpleNodeDefinition<TParams>): ImageNode<TParams> {
   const name = definition.name ?? nextNodeName();
   const params = (definition.params ?? ({} as TParams)) as TParams;
-  return createPixelNode(
-    name,
-    params,
-    definition.run,
-    {
-      input: definition.input,
-      output: definition.output,
-    }
-  );
+  return createPixelNode(name, params, definition.run, {
+    input: definition.input,
+    output: definition.output,
+  });
 }
 
 /**
@@ -241,7 +241,14 @@ export async function runNodeImage(
 /**
  * Selector used to choose pixels for masked execution.
  */
-export type PixelSelector = (pixel: Pixel, x: number, y: number, context: NodeContext) => boolean;
+export type PixelSelector = ((
+  pixel: Pixel,
+  x: number,
+  y: number,
+  context: NodeContext
+) => boolean) & {
+  prepare?: (image: ImageBuffer, context: NodeContext) => Uint8Array;
+};
 
 /**
  * Masking options for nodes.
@@ -303,6 +310,46 @@ export type CircleSelectorOptions = {
 };
 
 /**
+ * Options for alpha-boundary stroke nodes.
+ */
+export type AlphaStrokeOptions = {
+  alphaThreshold?: number;
+  thickness?: number;
+  color?: ColorInput;
+  connectivity?: 4 | 8;
+};
+
+/**
+ * Options for contrast-boundary stroke nodes.
+ */
+export type ContrastStrokeOptions = {
+  threshold?: number;
+  thickness?: number;
+  color?: ColorInput;
+  connectivity?: 4 | 8;
+};
+
+/**
+ * Options for alpha-boundary selectors.
+ */
+export type AlphaStrokeSelectorOptions = {
+  alphaThreshold?: number;
+  thickness?: number;
+  mode?: 'stroke' | 'shape';
+  connectivity?: 4 | 8;
+};
+
+/**
+ * Options for contrast-boundary selectors.
+ */
+export type ContrastStrokeSelectorOptions = {
+  threshold?: number;
+  thickness?: number;
+  mode?: 'stroke' | 'shape';
+  connectivity?: 4 | 8;
+};
+
+/**
  * Creates a rectangle selector.
  */
 export function createRectSelector(options: RectSelectorOptions): PixelSelector {
@@ -343,6 +390,57 @@ export function createLumaSelector(threshold: number): PixelSelector {
 export function createAlphaSelector(threshold: number): PixelSelector {
   const value = clampByte(threshold);
   return (pixel) => pixel.a >= value;
+}
+
+/**
+ * Creates an alpha-boundary selector.
+ */
+export function createAlphaStrokeSelector(options: AlphaStrokeSelectorOptions = {}): PixelSelector {
+  const { alphaThreshold = 1, thickness = 1, mode = 'stroke', connectivity = 8 } = options;
+  const normalizedThreshold = clampByte(alphaThreshold);
+  const normalizedThickness = Math.max(1, Math.floor(thickness));
+  const normalizedConnectivity = connectivity === 4 ? 4 : 8;
+  const selector = ((pixel) =>
+    mode === 'shape' ? pixel.a >= normalizedThreshold : false) as PixelSelector;
+  selector.prepare = (image) => {
+    const rgba = image.format === 'rgba8' ? image : image.toFormat('rgba8');
+    if (mode === 'shape') {
+      return computeAlphaMask(rgba, normalizedThreshold);
+    }
+    return computeAlphaStrokeMask(
+      rgba,
+      normalizedThreshold,
+      normalizedThickness,
+      normalizedConnectivity
+    );
+  };
+  return selector;
+}
+
+/**
+ * Creates a contrast-boundary selector.
+ */
+export function createContrastStrokeSelector(
+  options: ContrastStrokeSelectorOptions = {}
+): PixelSelector {
+  const { threshold = 32, thickness = 1, mode = 'stroke', connectivity = 8 } = options;
+  const normalizedThreshold = Math.max(0, threshold);
+  const normalizedThickness = Math.max(1, Math.floor(thickness));
+  const normalizedConnectivity = connectivity === 4 ? 4 : 8;
+  const selector = (() => false) as PixelSelector;
+  selector.prepare = (image) => {
+    const rgba = image.format === 'rgba8' ? image : image.toFormat('rgba8');
+    if (mode === 'shape') {
+      return computeContrastShapeMask(rgba, normalizedThreshold, normalizedConnectivity);
+    }
+    return computeContrastStrokeMask(
+      rgba,
+      normalizedThreshold,
+      normalizedThickness,
+      normalizedConnectivity
+    );
+  };
+  return selector;
 }
 
 /**
@@ -445,6 +543,60 @@ export function createSelectionCropNode(
     const mask = buildSelectionMask(image, selector, context);
     return applyMaskToImage(image, mask, outside);
   });
+}
+
+/**
+ * Creates a node that draws a stroke along alpha boundaries.
+ */
+export function createAlphaStrokeNode(options: AlphaStrokeOptions = {}): ImageNode {
+  const { alphaThreshold = 1, thickness = 1, color = '#000000', connectivity = 8 } = options;
+  const normalizedThreshold = clampByte(alphaThreshold);
+  const normalizedThickness = Math.max(1, Math.floor(thickness));
+  const normalizedConnectivity = connectivity === 4 ? 4 : 8;
+  const stroke = toRgba(color);
+  return createImageNode(
+    'alpha-stroke',
+    { alphaThreshold, thickness, color, connectivity: normalizedConnectivity },
+    (_context, image) => {
+      const base = image.format === 'rgba8' ? image : image.toFormat('rgba8');
+      const mask = computeAlphaStrokeMask(
+        base,
+        normalizedThreshold,
+        normalizedThickness,
+        normalizedConnectivity
+      );
+      const output = base.clone();
+      applyColorMask(output, mask, stroke);
+      return image.format === 'rgba8' ? output : output.toFormat(image.format);
+    }
+  );
+}
+
+/**
+ * Creates a node that draws a stroke along contrast boundaries.
+ */
+export function createContrastStrokeNode(options: ContrastStrokeOptions = {}): ImageNode {
+  const { threshold = 32, thickness = 1, color = '#000000', connectivity = 8 } = options;
+  const normalizedThreshold = Math.max(0, threshold);
+  const normalizedThickness = Math.max(1, Math.floor(thickness));
+  const normalizedConnectivity = connectivity === 4 ? 4 : 8;
+  const stroke = toRgba(color);
+  return createImageNode(
+    'contrast-stroke',
+    { threshold, thickness, color, connectivity: normalizedConnectivity },
+    (_context, image) => {
+      const base = image.format === 'rgba8' ? image : image.toFormat('rgba8');
+      const mask = computeContrastStrokeMask(
+        base,
+        normalizedThreshold,
+        normalizedThickness,
+        normalizedConnectivity
+      );
+      const output = base.clone();
+      applyColorMask(output, mask, stroke);
+      return image.format === 'rgba8' ? output : output.toFormat(image.format);
+    }
+  );
 }
 
 /**
@@ -601,15 +753,7 @@ export function createValueNoiseNode(options: ValueNoiseOptions = {}): ImageNode
     let index = 0;
     for (let y = 0; y < height; y += 1) {
       for (let x = 0; x < width; x += 1) {
-        const value = fractalValueNoise(
-          x,
-          y,
-          seed,
-          scale,
-          octaves,
-          persistence,
-          lacunarity
-        );
+        const value = fractalValueNoise(x, y, seed, scale, octaves, persistence, lacunarity);
         const mapped = Math.round(min + (max - min) * value);
         data[index] = mapped;
         data[index + 1] = mapped;
@@ -662,9 +806,7 @@ export function createVoronoiNoiseNode(options: VoronoiNoiseOptions = {}): Image
         }
         const maxDist = cell * cell * 2;
         const value =
-          mode === 'edge'
-            ? clamp01((second - best) / maxDist)
-            : clamp01(1 - best / maxDist);
+          mode === 'edge' ? clamp01((second - best) / maxDist) : clamp01(1 - best / maxDist);
         const mapped = Math.round(min + (max - min) * value);
         data[index] = mapped;
         data[index + 1] = mapped;
@@ -681,7 +823,15 @@ export function createVoronoiNoiseNode(options: VoronoiNoiseOptions = {}): Image
  * Creates a node that generates fractal value noise.
  */
 export function createFractalNoiseNode(options: FractalNoiseOptions = {}): ImageNode {
-  const { scale = 32, octaves = 4, persistence = 0.5, lacunarity = 2, min = 0, max = 255, alpha = 255 } = options;
+  const {
+    scale = 32,
+    octaves = 4,
+    persistence = 0.5,
+    lacunarity = 2,
+    min = 0,
+    max = 255,
+    alpha = 255,
+  } = options;
   return createImageNode('fractal-noise', options, (context, image) => {
     const seed = ensureSeed(context);
     const output = image.clone();
@@ -708,7 +858,15 @@ export function createFractalNoiseNode(options: FractalNoiseOptions = {}): Image
  * Creates a node that generates Perlin noise.
  */
 export function createPerlinNoiseNode(options: PerlinNoiseOptions = {}): ImageNode {
-  const { scale = 32, octaves = 4, persistence = 0.5, lacunarity = 2, min = 0, max = 255, alpha = 255 } = options;
+  const {
+    scale = 32,
+    octaves = 4,
+    persistence = 0.5,
+    lacunarity = 2,
+    min = 0,
+    max = 255,
+    alpha = 255,
+  } = options;
   return createImageNode('perlin-noise', options, (context, image) => {
     const seed = ensureSeed(context);
     const output = image.clone();
@@ -735,7 +893,15 @@ export function createPerlinNoiseNode(options: PerlinNoiseOptions = {}): ImageNo
  * Creates a node that generates turbulence noise.
  */
 export function createTurbulenceNoiseNode(options: TurbulenceNoiseOptions = {}): ImageNode {
-  const { scale = 32, octaves = 4, persistence = 0.5, lacunarity = 2, min = 0, max = 255, alpha = 255 } = options;
+  const {
+    scale = 32,
+    octaves = 4,
+    persistence = 0.5,
+    lacunarity = 2,
+    min = 0,
+    max = 255,
+    alpha = 255,
+  } = options;
   return createImageNode('turbulence-noise', options, (context, image) => {
     const seed = ensureSeed(context);
     const output = image.clone();
@@ -762,7 +928,15 @@ export function createTurbulenceNoiseNode(options: TurbulenceNoiseOptions = {}):
  * Creates a node that generates ridged noise.
  */
 export function createRidgedNoiseNode(options: RidgedNoiseOptions = {}): ImageNode {
-  const { scale = 32, octaves = 4, persistence = 0.5, lacunarity = 2, min = 0, max = 255, alpha = 255 } = options;
+  const {
+    scale = 32,
+    octaves = 4,
+    persistence = 0.5,
+    lacunarity = 2,
+    min = 0,
+    max = 255,
+    alpha = 255,
+  } = options;
   return createImageNode('ridged-noise', options, (context, image) => {
     const seed = ensureSeed(context);
     const output = image.clone();
@@ -939,23 +1113,20 @@ export function createGaussianNoiseNode(
   alpha = 255,
   grayscale = false
 ): ImageNode {
-  return createImageNode(
-    'gaussian-noise',
-    { mean, stdDev, alpha, grayscale },
-    (context, image) =>
-      image.mapPixels((pixel) => {
-        const n = context.random.nextGaussian(mean, stdDev);
-        if (grayscale) {
-          const value = clampByte(pixel.r + n);
-          return { r: value, g: value, b: value, a: alpha };
-        }
-        return {
-          r: clampByte(pixel.r + n),
-          g: clampByte(pixel.g + n),
-          b: clampByte(pixel.b + n),
-          a: alpha,
-        };
-      })
+  return createImageNode('gaussian-noise', { mean, stdDev, alpha, grayscale }, (context, image) =>
+    image.mapPixels((pixel) => {
+      const n = context.random.nextGaussian(mean, stdDev);
+      if (grayscale) {
+        const value = clampByte(pixel.r + n);
+        return { r: value, g: value, b: value, a: alpha };
+      }
+      return {
+        r: clampByte(pixel.r + n),
+        g: clampByte(pixel.g + n),
+        b: clampByte(pixel.b + n),
+        a: alpha,
+      };
+    })
   );
 }
 
@@ -969,16 +1140,13 @@ export function createSaltPepperNoiseNode(
 ): ImageNode {
   const saltRgba = toRgba(salt);
   const pepperRgba = toRgba(pepper);
-  return createImageNode(
-    'salt-pepper',
-    { probability, salt, pepper },
-    (context, image) =>
-      image.mapPixels((pixel) => {
-        const roll = context.random.next();
-        if (roll < probability / 2) return pepperRgba;
-        if (roll < probability) return saltRgba;
-        return pixel;
-      })
+  return createImageNode('salt-pepper', { probability, salt, pepper }, (context, image) =>
+    image.mapPixels((pixel) => {
+      const roll = context.random.next();
+      if (roll < probability / 2) return pepperRgba;
+      if (roll < probability) return saltRgba;
+      return pixel;
+    })
   );
 }
 
@@ -993,14 +1161,11 @@ export function createCheckerboardNode(
   const a = toRgba(colorA);
   const b = toRgba(colorB);
   const size = Math.max(1, Math.floor(tileSize));
-  return createImageNode(
-    'checkerboard',
-    { tileSize: size, colorA, colorB },
-    (_context, image) =>
-      image.mapPixels((_pixel, x, y) => {
-        const index = (Math.floor(x / size) + Math.floor(y / size)) % 2;
-        return index === 0 ? a : b;
-      })
+  return createImageNode('checkerboard', { tileSize: size, colorA, colorB }, (_context, image) =>
+    image.mapPixels((_pixel, x, y) => {
+      const index = (Math.floor(x / size) + Math.floor(y / size)) % 2;
+      return index === 0 ? a : b;
+    })
   );
 }
 
@@ -1106,18 +1271,14 @@ export function buildGaussianKernel(size: number, sigma = 1.5): number[][] {
  * Creates a Gaussian blur node.
  */
 export function createGaussianBlurNode(size = 9, sigma = 2): ImageNode {
-  return createImageNode(
-    'gaussian-blur',
-    { size, sigma },
-    async (context, image) => {
-      if (image.format !== 'rgba8') {
-        const node = createConvolutionNode('gaussian-blur', buildGaussianKernel(size, sigma));
-        const state: NodeState = { images: { [DEFAULT_IMAGE_KEY]: image }, data: {} };
-        return runNodeImage(node, context, state);
-      }
-      return gaussianBlurRgba8(image, size, sigma);
+  return createImageNode('gaussian-blur', { size, sigma }, async (context, image) => {
+    if (image.format !== 'rgba8') {
+      const node = createConvolutionNode('gaussian-blur', buildGaussianKernel(size, sigma));
+      const state: NodeState = { images: { [DEFAULT_IMAGE_KEY]: image }, data: {} };
+      return runNodeImage(node, context, state);
     }
-  );
+    return gaussianBlurRgba8(image, size, sigma);
+  });
 }
 
 /**
@@ -1189,11 +1350,295 @@ function withImage(state: NodeState, key: string, image: ImageBuffer): NodeState
   };
 }
 
+/**
+ * Neighbor offsets for 4-connected adjacency.
+ */
+const NEIGHBOR_OFFSETS_4: [number, number][] = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+];
+
+/**
+ * Neighbor offsets for 8-connected adjacency.
+ */
+const NEIGHBOR_OFFSETS_8: [number, number][] = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+  [1, 1],
+  [-1, 1],
+  [1, -1],
+  [-1, -1],
+];
+
+/**
+ * Returns neighbor offsets for the requested connectivity.
+ */
+function getNeighborOffsets(connectivity: 4 | 8): [number, number][] {
+  return connectivity === 4 ? NEIGHBOR_OFFSETS_4 : NEIGHBOR_OFFSETS_8;
+}
+
+/**
+ * Builds a binary mask for pixels with alpha above the threshold.
+ */
+function computeAlphaMask(image: ImageBuffer, alphaThreshold: number): Uint8Array {
+  const total = image.width * image.height;
+  const mask = new Uint8Array(total);
+  const data = image.data as Uint8Array;
+  for (let i = 0; i < total; i += 1) {
+    mask[i] = data[i * 4 + 3] >= alphaThreshold ? 1 : 0;
+  }
+  return mask;
+}
+
+/**
+ * Marks transparent pixels that touch opaque pixels as boundary candidates.
+ */
+function computeAlphaBoundaryMask(
+  solidMask: Uint8Array,
+  width: number,
+  height: number,
+  connectivity: 4 | 8
+): Uint8Array {
+  const mask = new Uint8Array(width * height);
+  const offsets = getNeighborOffsets(connectivity);
+  let index = 0;
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (solidMask[index] === 0) {
+        for (const [dx, dy] of offsets) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+          const nidx = ny * width + nx;
+          if (solidMask[nidx] === 1) {
+            mask[index] = 1;
+            break;
+          }
+        }
+      }
+      index += 1;
+    }
+  }
+  return mask;
+}
+
+/**
+ * Expands a seed mask by a given thickness using BFS.
+ */
+function expandMask(
+  seedMask: Uint8Array,
+  width: number,
+  height: number,
+  thickness: number,
+  connectivity: 4 | 8,
+  allowedMask?: Uint8Array
+): Uint8Array {
+  const total = width * height;
+  const maxDepth = Math.max(0, Math.floor(thickness) - 1);
+  const output = new Uint8Array(total);
+  const dist = new Int32Array(total);
+  dist.fill(-1);
+  const queue = new Int32Array(total);
+  let head = 0;
+  let tail = 0;
+  for (let i = 0; i < total; i += 1) {
+    if (seedMask[i] === 1) {
+      output[i] = 1;
+      dist[i] = 0;
+      queue[tail] = i;
+      tail += 1;
+    }
+  }
+  if (maxDepth === 0) {
+    return output;
+  }
+  const offsets = getNeighborOffsets(connectivity);
+  while (head < tail) {
+    const idx = queue[head];
+    head += 1;
+    const depth = dist[idx];
+    if (depth >= maxDepth) continue;
+    const x = idx % width;
+    const y = Math.floor(idx / width);
+    for (const [dx, dy] of offsets) {
+      const nx = x + dx;
+      const ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+      const nidx = ny * width + nx;
+      if (allowedMask && allowedMask[nidx] === 0) continue;
+      if (dist[nidx] !== -1) continue;
+      dist[nidx] = depth + 1;
+      output[nidx] = 1;
+      queue[tail] = nidx;
+      tail += 1;
+    }
+  }
+  return output;
+}
+
+/**
+ * Builds a stroke mask on alpha boundaries that grows into transparent pixels.
+ */
+function computeAlphaStrokeMask(
+  image: ImageBuffer,
+  alphaThreshold: number,
+  thickness: number,
+  connectivity: 4 | 8
+): Uint8Array {
+  const solidMask = computeAlphaMask(image, alphaThreshold);
+  const boundaryMask = computeAlphaBoundaryMask(solidMask, image.width, image.height, connectivity);
+  if (thickness <= 1) {
+    return boundaryMask;
+  }
+  const total = image.width * image.height;
+  const transparentMask = new Uint8Array(total);
+  for (let i = 0; i < total; i += 1) {
+    transparentMask[i] = solidMask[i] === 0 ? 1 : 0;
+  }
+  return expandMask(
+    boundaryMask,
+    image.width,
+    image.height,
+    thickness,
+    connectivity,
+    transparentMask
+  );
+}
+
+/**
+ * Detects contrast edges and marks both sides of the boundary.
+ */
+function computeContrastEdgeMask(
+  image: ImageBuffer,
+  threshold: number,
+  connectivity: 4 | 8
+): Uint8Array {
+  const width = image.width;
+  const height = image.height;
+  const total = width * height;
+  const mask = new Uint8Array(total);
+  const data = image.data as Uint8Array;
+  const limit = threshold * threshold;
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const idx = y * width + x;
+      const base = idx * 4;
+      const r = data[base];
+      const g = data[base + 1];
+      const b = data[base + 2];
+      if (x + 1 < width) {
+        const right = base + 4;
+        const dr = r - data[right];
+        const dg = g - data[right + 1];
+        const db = b - data[right + 2];
+        if (dr * dr + dg * dg + db * db >= limit) {
+          mask[idx] = 1;
+          mask[idx + 1] = 1;
+        }
+      }
+      if (y + 1 < height) {
+        const down = base + width * 4;
+        const dr = r - data[down];
+        const dg = g - data[down + 1];
+        const db = b - data[down + 2];
+        if (dr * dr + dg * dg + db * db >= limit) {
+          mask[idx] = 1;
+          mask[idx + width] = 1;
+        }
+      }
+      if (connectivity === 8 && y + 1 < height) {
+        if (x + 1 < width) {
+          const downRight = base + width * 4 + 4;
+          const dr = r - data[downRight];
+          const dg = g - data[downRight + 1];
+          const db = b - data[downRight + 2];
+          if (dr * dr + dg * dg + db * db >= limit) {
+            mask[idx] = 1;
+            mask[idx + width + 1] = 1;
+          }
+        }
+        if (x > 0) {
+          const downLeft = base + width * 4 - 4;
+          const dr = r - data[downLeft];
+          const dg = g - data[downLeft + 1];
+          const db = b - data[downLeft + 2];
+          if (dr * dr + dg * dg + db * db >= limit) {
+            mask[idx] = 1;
+            mask[idx + width - 1] = 1;
+          }
+        }
+      }
+    }
+  }
+  return mask;
+}
+
+/**
+ * Expands a contrast edge mask to the requested thickness.
+ */
+function computeContrastStrokeMask(
+  image: ImageBuffer,
+  threshold: number,
+  thickness: number,
+  connectivity: 4 | 8
+): Uint8Array {
+  const edgeMask = computeContrastEdgeMask(image, threshold, connectivity);
+  if (thickness <= 1) {
+    return edgeMask;
+  }
+  return expandMask(edgeMask, image.width, image.height, thickness, connectivity);
+}
+
+/**
+ * Fills shapes inferred from contrast edges using scanline toggling.
+ */
+function computeContrastShapeMask(
+  image: ImageBuffer,
+  threshold: number,
+  connectivity: 4 | 8
+): Uint8Array {
+  const edgeMask = computeContrastEdgeMask(image, threshold, connectivity);
+  const width = image.width;
+  const height = image.height;
+  const total = width * height;
+  const fill = new Uint8Array(total);
+  for (let y = 0; y < height; y += 1) {
+    let inside = false;
+    let lastEdge = 0;
+    for (let x = 0; x < width; x += 1) {
+      const idx = y * width + x;
+      const edge = edgeMask[idx];
+      if (edge === 1 && lastEdge === 0) {
+        inside = !inside;
+      }
+      lastEdge = edge;
+      if (inside || edge === 1) {
+        fill[idx] = 1;
+      }
+    }
+  }
+  return fill;
+}
+
+/**
+ * Builds a selection mask, using a precomputed selector when available.
+ */
 function buildSelectionMask(
   image: ImageBuffer,
   selector: PixelSelector,
   context: NodeContext
 ): Uint8Array {
+  if (typeof selector.prepare === 'function') {
+    const prepared = selector.prepare(image, context);
+    if (prepared.length !== image.width * image.height) {
+      throw new Error('Selection mask size mismatch');
+    }
+    return prepared;
+  }
   const mask = new Uint8Array(image.width * image.height);
   let index = 0;
   for (let y = 0; y < image.height; y += 1) {

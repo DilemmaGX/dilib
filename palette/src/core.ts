@@ -48,9 +48,7 @@ export interface PaletteGeneratorInput {
 /**
  * Palette generator contract.
  */
-export type PaletteGenerator = (
-  input: PaletteGeneratorInput
-) => Promise<string[]> | string[];
+export type PaletteGenerator = (input: PaletteGeneratorInput) => Promise<string[]> | string[];
 
 /**
  * Options used when generating palettes.
@@ -585,7 +583,11 @@ async function extractDominantPalette(buffer: Buffer, count: number): Promise<st
     count: population,
   }));
   if (entries.length === 0) return [];
-  entries.sort((a, b) => b.count - a.count);
+  entries.sort((a, b) => {
+    const countDelta = b.count - a.count;
+    if (countDelta !== 0) return countDelta;
+    return rgbKey(a.rgb) - rgbKey(b.rgb);
+  });
   const totalCount = entries.reduce((sum, entry) => sum + entry.count, 0);
   const coverageTarget = 0.95;
   const candidateEntries: typeof entries = [];
@@ -620,7 +622,12 @@ async function extractDominantPalette(buffer: Buffer, count: number): Promise<st
       }
       const weight = entry.count / maxCount;
       const score = minDist * (0.2 + Math.sqrt(weight));
-      if (score > bestScore) {
+      if (
+        score > bestScore + 1e-9 ||
+        (Math.abs(score - bestScore) <= 1e-9 &&
+          best !== null &&
+          rgbKey(entry.rgb) < rgbKey(best.rgb))
+      ) {
         bestScore = score;
         best = entry;
       }
@@ -820,6 +827,10 @@ function rgbDistanceSq(a: RgbColor, b: RgbColor): number {
   const dg = a.g - b.g;
   const db = a.b - b.b;
   return dr * dr + dg * dg + db * db;
+}
+
+function rgbKey(color: RgbColor): number {
+  return (color.r << 16) + (color.g << 8) + color.b;
 }
 
 function argbToRgb(argb: number): RgbColor {

@@ -192,10 +192,7 @@ export async function resizeImage(
 /**
  * Renders text onto an ImageBuffer.
  */
-export async function renderText(
-  image: ImageBuffer,
-  options: TextOptions
-): Promise<ImageBuffer> {
+export async function renderText(image: ImageBuffer, options: TextOptions): Promise<ImageBuffer> {
   const base = await imageToBuffer(image, { format: 'png' });
   const svg = await buildTextSvg(image.width, image.height, options);
   const { data, info } = await sharp(base)
@@ -240,16 +237,12 @@ function decodeDataUri(dataUri: string): Buffer {
   return Buffer.from(decodeURIComponent(data));
 }
 
-async function buildTextSvg(
-  width: number,
-  height: number,
-  options: TextOptions
-): Promise<string> {
+async function buildTextSvg(width: number, height: number, options: TextOptions): Promise<string> {
   const layout = options.layout;
   const style = options.style ?? {};
   const fontSize = style.fontSize ?? 48;
-  const fontWeight = style.bold ? 700 : options.font.weight ?? 400;
-  const fontStyle = style.italic ? 'italic' : options.font.style ?? 'normal';
+  const fontWeight = style.bold ? 700 : (options.font.weight ?? 400);
+  const fontStyle = style.italic ? 'italic' : (options.font.style ?? 'normal');
   const opacity = style.opacity ?? 1;
   const lineHeight = layout.lineHeight ?? Math.round(fontSize * 1.25);
   const align = layout.align ?? 'left';
@@ -258,11 +251,12 @@ async function buildTextSvg(
   const rgba = normalizeColor(color, opacity);
   const textAnchor = align === 'center' ? 'middle' : align === 'right' ? 'end' : 'start';
   const lines = wrapText(options.text, layout.maxWidth, fontSize, layout.maxLines);
-  const x = align === 'left'
-    ? layout.x
-    : align === 'center'
-      ? layout.x + (layout.maxWidth ?? 0) / 2
-      : layout.x + (layout.maxWidth ?? 0);
+  const x =
+    align === 'left'
+      ? layout.x
+      : align === 'center'
+        ? layout.x + (layout.maxWidth ?? 0) / 2
+        : layout.x + (layout.maxWidth ?? 0);
   const y = layout.y + fontSize;
   const textDecoration = [
     style.underline ? 'underline' : null,
@@ -312,7 +306,12 @@ function guessFontMime(filePath?: string): string {
   return 'font/ttf';
 }
 
-function wrapText(text: string, maxWidth: number | undefined, fontSize: number, maxLines?: number): string[] {
+function wrapText(
+  text: string,
+  maxWidth: number | undefined,
+  fontSize: number,
+  maxLines?: number
+): string[] {
   if (!maxWidth) {
     return text.split('\n');
   }

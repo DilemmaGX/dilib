@@ -42,7 +42,11 @@ export {
   sourceFromUrl,
 } from './core/sources';
 export type {
+  AlphaStrokeOptions,
+  AlphaStrokeSelectorOptions,
   CircleSelectorOptions,
+  ContrastStrokeOptions,
+  ContrastStrokeSelectorOptions,
   ImageInput,
   ImageNode,
   ImageNodeOptions,
@@ -71,6 +75,8 @@ export type {
 } from './core/nodes';
 export {
   DEFAULT_IMAGE_KEY,
+  createAlphaStrokeNode,
+  createAlphaStrokeSelector,
   createBrightnessNode,
   createCircleSelector,
   createCheckerboardNode,
@@ -78,6 +84,8 @@ export {
   createConvolutionNode,
   createContrastNode,
   createAlphaSelector,
+  createContrastStrokeNode,
+  createContrastStrokeSelector,
   createEdgeDetectNode,
   createFillNode,
   createGammaNode,
