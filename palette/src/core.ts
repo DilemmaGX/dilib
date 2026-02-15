@@ -16,9 +16,9 @@ import {
 export type InputType = 'hex' | 'datauri' | 'url' | 'path';
 
 /**
- * Supported palette algorithms.
+ * Built-in palette algorithms.
  */
-export type PaletteAlgorithm =
+export type BuiltInPaletteAlgorithm =
   | 'analogous'
   | 'complementary'
   | 'triadic'
@@ -26,6 +26,30 @@ export type PaletteAlgorithm =
   | 'split-complementary'
   | 'monochrome'
   | 'monet';
+
+/**
+ * Palette algorithm name, including custom algorithms.
+ */
+export type PaletteAlgorithm = BuiltInPaletteAlgorithm | (string & { __paletteAlgorithm?: never });
+
+/**
+ * Input for palette generators.
+ */
+export interface PaletteGeneratorInput {
+  inputType: InputType;
+  baseColor: string;
+  baseRgb: RgbColor;
+  baseHsl: HslColor;
+  count?: number;
+  buffer?: Buffer;
+}
+
+/**
+ * Palette generator contract.
+ */
+export type PaletteGenerator = (
+  input: PaletteGeneratorInput
+) => Promise<string[]> | string[];
 
 /**
  * Options used when generating palettes.
@@ -75,23 +99,40 @@ interface HslColor {
   l: number;
 }
 
-const ALGORITHMS: PaletteAlgorithm[] = [
-  'analogous',
-  'complementary',
-  'triadic',
-  'tetradic',
-  'split-complementary',
-  'monochrome',
-  'monet',
-];
+const DEFAULT_ALGORITHM: BuiltInPaletteAlgorithm = 'analogous';
 
-const DEFAULT_ALGORITHM: PaletteAlgorithm = 'analogous';
+const algorithmRegistry = new Map<string, PaletteGenerator>();
+let builtInsRegistered = false;
+
+/**
+ * Registers a custom palette algorithm.
+ */
+export function registerAlgorithm(name: string, generator: PaletteGenerator): void {
+  if (!name.trim()) {
+    throw new Error('Algorithm name is required');
+  }
+  algorithmRegistry.set(name, generator);
+}
+
+/**
+ * Unregisters a palette algorithm.
+ */
+export function unregisterAlgorithm(name: string): boolean {
+  return algorithmRegistry.delete(name);
+}
+
+/**
+ * Returns a registered algorithm by name.
+ */
+export function getAlgorithm(name: string): PaletteGenerator | undefined {
+  return algorithmRegistry.get(name);
+}
 
 /**
  * Returns the list of supported palette algorithms.
  */
 export function listAlgorithms(): PaletteAlgorithm[] {
-  return [...ALGORITHMS];
+  return Array.from(algorithmRegistry.keys()).sort();
 }
 
 /**
@@ -191,18 +232,18 @@ async function buildPaletteResultFromBuffer(
 ): Promise<PaletteResult> {
   const resolvedAlgorithm = resolveAlgorithm(algorithm);
   const baseRgb = await getAverageColor(buffer);
-  if (resolvedAlgorithm === 'monet') {
-    const colors = await extractMonetPalette(buffer, resolveMonetCount(count, 6));
-    if (colors.length > 0) {
-      return {
-        inputType,
-        algorithm: resolvedAlgorithm,
-        baseColor: rgbToHex(baseRgb),
-        colors,
-      };
-    }
-  }
-  return buildPaletteResultFromBase(baseRgb, inputType, resolvedAlgorithm, count);
+  const baseHex = rgbToHex(baseRgb);
+  return buildPaletteResult(
+    {
+      inputType,
+      baseColor: baseHex,
+      baseRgb,
+      baseHsl: rgbToHsl(baseRgb),
+      count,
+      buffer,
+    },
+    resolvedAlgorithm
+  );
 }
 
 /**
@@ -212,32 +253,24 @@ async function buildPaletteResultFromBuffer(
  * @param algorithm Optional algorithm override.
  * @param count Optional palette size.
  */
-function buildPaletteResultFromBase(
+async function buildPaletteResultFromBase(
   baseRgb: RgbColor,
   inputType: InputType,
   algorithm?: PaletteAlgorithm,
   count?: number
-): PaletteResult {
+): Promise<PaletteResult> {
   const resolvedAlgorithm = resolveAlgorithm(algorithm);
   const baseHex = rgbToHex(baseRgb);
-  if (resolvedAlgorithm === 'monet') {
-    const sourceArgb = argbFromHex(baseHex);
-    return {
+  return buildPaletteResult(
+    {
       inputType,
-      algorithm: resolvedAlgorithm,
       baseColor: baseHex,
-      colors: buildMonetPaletteFromSourceArgb(sourceArgb, resolveMonetCount(count, 6)),
-    };
-  }
-  const baseHsl = rgbToHsl(baseRgb);
-  const paletteHsl = buildPaletteHsl(baseHsl, resolvedAlgorithm, count);
-  const colors = paletteHsl.map((color) => rgbToHex(hslToRgb(color)));
-  return {
-    inputType,
-    algorithm: resolvedAlgorithm,
-    baseColor: baseHex,
-    colors,
-  };
+      baseRgb,
+      baseHsl: rgbToHsl(baseRgb),
+      count,
+    },
+    resolvedAlgorithm
+  );
 }
 
 /**
@@ -245,11 +278,11 @@ function buildPaletteResultFromBase(
  * @param algorithm Optional algorithm override.
  */
 function resolveAlgorithm(algorithm: PaletteAlgorithm | undefined): PaletteAlgorithm {
-  if (!algorithm) return DEFAULT_ALGORITHM;
-  if (!ALGORITHMS.includes(algorithm)) {
-    throw new Error(`Unknown algorithm: ${algorithm}`);
+  const resolved = algorithm ?? DEFAULT_ALGORITHM;
+  if (!algorithmRegistry.has(resolved)) {
+    throw new Error(`Unknown algorithm: ${resolved}`);
   }
-  return algorithm;
+  return resolved;
 }
 
 /**
@@ -288,6 +321,56 @@ function buildPaletteHsl(base: HslColor, algorithm: PaletteAlgorithm, count?: nu
   }
 
   return buildMonochrome(hue, sat, light, resolveCount(count, 6));
+}
+
+function buildHslPaletteColors(
+  input: PaletteGeneratorInput,
+  algorithm: BuiltInPaletteAlgorithm
+): string[] {
+  const paletteHsl = buildPaletteHsl(input.baseHsl, algorithm, input.count);
+  return paletteHsl.map((color) => rgbToHex(hslToRgb(color)));
+}
+
+function registerBuiltInAlgorithms(): void {
+  if (builtInsRegistered) return;
+  builtInsRegistered = true;
+  registerAlgorithm('analogous', (input) => buildHslPaletteColors(input, 'analogous'));
+  registerAlgorithm('complementary', (input) => buildHslPaletteColors(input, 'complementary'));
+  registerAlgorithm('triadic', (input) => buildHslPaletteColors(input, 'triadic'));
+  registerAlgorithm('tetradic', (input) => buildHslPaletteColors(input, 'tetradic'));
+  registerAlgorithm('split-complementary', (input) =>
+    buildHslPaletteColors(input, 'split-complementary')
+  );
+  registerAlgorithm('monochrome', (input) => buildHslPaletteColors(input, 'monochrome'));
+  registerAlgorithm('monet', async (input) => {
+    if (input.buffer) {
+      const colors = await extractMonetPalette(input.buffer, resolveMonetCount(input.count, 6));
+      if (colors.length > 0) {
+        return colors;
+      }
+    }
+    const sourceArgb = argbFromHex(input.baseColor);
+    return buildMonetPaletteFromSourceArgb(sourceArgb, resolveMonetCount(input.count, 6));
+  });
+}
+
+registerBuiltInAlgorithms();
+
+async function buildPaletteResult(
+  input: PaletteGeneratorInput,
+  algorithm: PaletteAlgorithm
+): Promise<PaletteResult> {
+  const generator = getAlgorithm(algorithm);
+  if (!generator) {
+    throw new Error(`Unknown algorithm: ${algorithm}`);
+  }
+  const colors = await generator(input);
+  return {
+    inputType: input.inputType,
+    algorithm,
+    baseColor: input.baseColor,
+    colors,
+  };
 }
 
 /**

@@ -2,23 +2,241 @@ import { ImageBuffer } from './image';
 import { ColorInput, colorDistance, toRgba } from './color';
 import { ImageSource, Pixel, PixelLike } from './types';
 import { SeededRandom } from './random';
-import { loadImage, ResizeOptions, resizeImage } from './sources';
+import { loadImage, ResizeOptions, resizeImage, renderText, type TextOptions } from './sources';
+
+export const DEFAULT_IMAGE_KEY = 'image';
 
 /**
  * Runtime context shared across nodes in a pipeline run.
  */
 export type NodeContext = {
   random: SeededRandom;
+  stash: Map<string, unknown>;
 };
+
+/**
+ * State passed between nodes in a pipeline run.
+ */
+export type NodeState = {
+  images: Record<string, ImageBuffer>;
+  data: Record<string, unknown>;
+};
+
+/**
+ * Result returned by a node execution.
+ */
+export type NodeResult = {
+  images?: Record<string, ImageBuffer>;
+  data?: Record<string, unknown>;
+};
+
+type NodeRunner<TParams> = {
+  bivarianceHack(
+    context: NodeContext,
+    state: NodeState,
+    params: TParams
+  ): Promise<NodeResult> | NodeResult;
+}['bivarianceHack'];
 
 /**
  * Pipeline node definition.
  */
-export type ImageNode = {
+export type NodeDefinition<TParams = unknown> = {
   name: string;
-  params?: unknown;
-  run: (context: NodeContext, image: ImageBuffer) => Promise<ImageBuffer> | ImageBuffer;
+  params?: TParams;
+  inputs?: string[];
+  outputs?: string[];
+  run: NodeRunner<TParams>;
 };
+
+/**
+ * Alias for image-focused nodes.
+ */
+export type ImageNode<TParams = unknown> = NodeDefinition<TParams>;
+
+/**
+ * Image node with typed parameters metadata.
+ */
+export type ParametricNode<TParams> = ImageNode<TParams> & { params: TParams };
+
+/**
+ * Definition for a reusable node.
+ */
+export function defineNode<TParams>(definition: NodeDefinition<TParams>): NodeDefinition<TParams> {
+  return definition;
+}
+
+/**
+ * Image node input definition.
+ */
+export type ImageNodeOptions = {
+  input?: string;
+  output?: string;
+};
+
+/**
+ * 2D pixel matrix representation.
+ */
+export type PixelMatrix = Pixel[][];
+
+/**
+ * Context provided to pixel-based node handlers.
+ */
+export type PixelNodeInfo<TParams> = {
+  context: NodeContext;
+  image: ImageBuffer;
+  state: NodeState;
+  params: TParams;
+  width: number;
+  height: number;
+};
+
+/**
+ * Handler signature for pixel-based nodes.
+ */
+export type PixelNodeRunner<TParams> = (
+  pixels: PixelMatrix,
+  info: PixelNodeInfo<TParams>
+) => PixelMatrix | ImageBuffer | Promise<PixelMatrix | ImageBuffer>;
+
+/**
+ * Simplified node definition.
+ */
+export type SimpleNodeDefinition<TParams> = {
+  name?: string;
+  params?: TParams;
+  input?: string;
+  output?: string;
+  run: PixelNodeRunner<TParams>;
+};
+
+/**
+ * Creates a node that reads a single image key and writes a single image key.
+ */
+export function createImageNode<TParams>(
+  name: string,
+  params: TParams,
+  run: (
+    context: NodeContext,
+    image: ImageBuffer,
+    params: TParams,
+    state: NodeState
+  ) => Promise<ImageBuffer> | ImageBuffer,
+  options: ImageNodeOptions = {}
+): ImageNode<TParams> {
+  const inputKey = options.input ?? DEFAULT_IMAGE_KEY;
+  const outputKey = options.output ?? DEFAULT_IMAGE_KEY;
+  return defineNode({
+    name,
+    params,
+    inputs: [inputKey],
+    outputs: [outputKey],
+    run: async (context, state, resolvedParams) => {
+      const image = getImage(state, inputKey);
+      const output = await run(context, image, resolvedParams, state);
+      return { images: { [outputKey]: output } };
+    },
+  });
+}
+
+let nodeCounter = 0;
+
+function nextNodeName(): string {
+  nodeCounter += 1;
+  return `node-${nodeCounter}`;
+}
+
+/**
+ * Creates a node that operates on a 2D pixel matrix.
+ */
+export function createPixelNode<TParams>(
+  name: string,
+  params: TParams,
+  run: PixelNodeRunner<TParams>,
+  options: ImageNodeOptions = {}
+): ImageNode<TParams> {
+  return createImageNode(name, params, async (context, image, resolvedParams, state) => {
+    const pixels = image.toMatrix();
+    const result = await run(pixels, {
+      context,
+      image,
+      state,
+      params: resolvedParams,
+      width: image.width,
+      height: image.height,
+    });
+    if (result instanceof ImageBuffer) {
+      return result;
+    }
+    return ImageBuffer.fromMatrix(result, image.format);
+  }, options);
+}
+
+/**
+ * Creates a simplified pixel-based node with optional name and parameters.
+ */
+export function node<TParams>(definition: SimpleNodeDefinition<TParams>): ImageNode<TParams> {
+  const name = definition.name ?? nextNodeName();
+  const params = (definition.params ?? ({} as TParams)) as TParams;
+  return createPixelNode(
+    name,
+    params,
+    definition.run,
+    {
+      input: definition.input,
+      output: definition.output,
+    }
+  );
+}
+
+/**
+ * Returns the image associated with the given key.
+ */
+export function getImage(state: NodeState, key: string = DEFAULT_IMAGE_KEY): ImageBuffer {
+  const image = state.images[key];
+  if (!image) {
+    throw new Error(`Missing image input: ${key}`);
+  }
+  return image;
+}
+
+/**
+ * Merges a node result into a state snapshot.
+ */
+export function mergeNodeState(state: NodeState, result: NodeResult): NodeState {
+  return {
+    images: { ...state.images, ...(result.images ?? {}) },
+    data: { ...state.data, ...(result.data ?? {}) },
+  };
+}
+
+/**
+ * Runs a node and returns its raw result.
+ */
+export async function runNode(
+  node: ImageNode,
+  context: NodeContext,
+  state: NodeState
+): Promise<NodeResult> {
+  return node.run(context, state, node.params as never);
+}
+
+/**
+ * Runs a node and returns a single image output.
+ */
+export async function runNodeImage(
+  node: ImageNode,
+  context: NodeContext,
+  state: NodeState,
+  outputKey: string = node.outputs?.[0] ?? DEFAULT_IMAGE_KEY
+): Promise<ImageBuffer> {
+  const result = await runNode(node, context, state);
+  const output = result.images?.[outputKey];
+  if (!output) {
+    throw new Error(`Missing node output image: ${outputKey}`);
+  }
+  return output;
+}
 
 /**
  * Selector used to choose pixels for masked execution.
@@ -29,14 +247,7 @@ export type PixelSelector = (pixel: Pixel, x: number, y: number, context: NodeCo
  * Masking options for nodes.
  */
 export type SelectionOptions = {
-  /**
-   * preserve: keep non-selected pixels from the original image.
-   * clip: replace non-selected pixels with outsideColor.
-   */
   mode?: SelectionMode;
-  /**
-   * Color used for clip mode. Defaults to transparent black.
-   */
   outsideColor?: ColorInput;
 };
 
@@ -46,9 +257,14 @@ export type SelectionOptions = {
 export type SelectionMode = 'preserve' | 'clip';
 
 /**
+ * Image source input accepted by nodes.
+ */
+export type ImageInput = ImageSource | ImageBuffer | ImageNode;
+
+/**
  * Mask source for color mapping.
  */
-export type MaskMapSource = ImageSource | ImageBuffer | ImageNode;
+export type MaskMapSource = ImageInput;
 
 /**
  * Color-to-source mapping entry.
@@ -130,11 +346,6 @@ export function createAlphaSelector(threshold: number): PixelSelector {
 }
 
 /**
- * Image node with typed parameters metadata.
- */
-export type ParametricNode<TParams> = ImageNode & { params: TParams };
-
-/**
  * Creates a node with typed parameters stored in the node metadata.
  */
 export function createParamNode<TParams>(
@@ -142,11 +353,9 @@ export function createParamNode<TParams>(
   params: TParams,
   run: (context: NodeContext, image: ImageBuffer, params: TParams) => ImageBuffer
 ): ParametricNode<TParams> {
-  return {
-    name,
-    params,
-    run: (context, image) => run(context, image, params),
-  };
+  return createImageNode(name, params, (context, image, resolvedParams) =>
+    run(context, image, resolvedParams)
+  ) as ParametricNode<TParams>;
 }
 
 /**
@@ -155,24 +364,32 @@ export function createParamNode<TParams>(
 export function createMaskedNode(
   node: ImageNode,
   selector: PixelSelector,
-  options: SelectionOptions = {}
+  options: SelectionOptions = {},
+  io: ImageNodeOptions = {}
 ): ImageNode {
-  return {
+  const inputKey = io.input ?? DEFAULT_IMAGE_KEY;
+  const outputKey = io.output ?? DEFAULT_IMAGE_KEY;
+  return defineNode({
     name: `${node.name}-masked`,
     params: { node: node.name, options },
-    run: async (context, image) => {
+    inputs: [inputKey],
+    outputs: [outputKey],
+    run: async (context, state) => {
+      const base = getImage(state, inputKey);
       const outside = toRgba(options.outsideColor ?? { r: 0, g: 0, b: 0, a: 0 });
       const mode = options.mode ?? 'clip';
-      const mask = buildSelectionMask(image, selector, context);
+      const mask = buildSelectionMask(base, selector, context);
       if (mode === 'preserve') {
-        const result = await node.run(context, image);
-        return mergeSelection(image, result, mask);
+        const innerState = withImage(state, inputKey, base);
+        const result = await runNodeImage(node, context, innerState, outputKey);
+        return { images: { [outputKey]: mergeSelection(base, result, mask) } };
       }
-      const maskedInput = applyMaskToImage(image, mask, outside);
-      const result = await node.run(context, maskedInput);
-      return applyMaskToImage(result, mask, outside);
+      const maskedInput = applyMaskToImage(base, mask, outside);
+      const innerState = withImage(state, inputKey, maskedInput);
+      const result = await runNodeImage(node, context, innerState, outputKey);
+      return { images: { [outputKey]: applyMaskToImage(result, mask, outside) } };
     },
-  };
+  });
 }
 
 /**
@@ -183,25 +400,25 @@ export function createMaskMapNode(
   entries: MaskMapEntry[],
   options: MaskMapOptions = {}
 ): ImageNode {
-  return {
-    name: 'mask-map',
-    params: { entries, options },
-    run: async (context, image) => {
+  return createImageNode(
+    'mask-map',
+    { entries, options },
+    async (context, image, params, state) => {
       const base = image.format === 'rgba8' ? image : image.toFormat('rgba8');
-      const maskImage = await resolveMaskSource(mask, context, base);
+      const maskImage = await resolveImageInput(mask, context, state);
       const resizedMask =
         maskImage.width === base.width && maskImage.height === base.height
           ? maskImage
-          : await resizeImage(maskImage, base.width, base.height, options.resize);
+          : await resizeImage(maskImage, base.width, base.height, params.options.resize);
       const maskRgba = resizedMask.format === 'rgba8' ? resizedMask : resizedMask.toFormat('rgba8');
       const layers = await Promise.all(
-        entries.map(async (entry) => {
+        params.entries.map(async (entry) => {
           const source = entry.source ?? base;
-          const resolved = await resolveMaskSource(source, context, base);
+          const resolved = await resolveImageInput(source, context, state);
           const resized =
             resolved.width === base.width && resolved.height === base.height
               ? resolved
-              : await resizeImage(resolved, base.width, base.height, options.resize);
+              : await resizeImage(resolved, base.width, base.height, params.options.resize);
           const rgba = resized.format === 'rgba8' ? resized : resized.toFormat('rgba8');
           return {
             color: toRgba(entry.color),
@@ -210,13 +427,10 @@ export function createMaskMapNode(
           };
         })
       );
-      const output = mapMaskComposite(base, maskRgba, layers, options.defaultColor);
-      if (image.format === 'rgba8') {
-        return output;
-      }
-      return output.toFormat(image.format);
-    },
-  };
+      const output = mapMaskComposite(base, maskRgba, layers, params.options.defaultColor);
+      return image.format === 'rgba8' ? output : output.toFormat(image.format);
+    }
+  );
 }
 
 /**
@@ -226,15 +440,11 @@ export function createSelectionCropNode(
   selector: PixelSelector,
   options: SelectionOptions = {}
 ): ImageNode {
-  return {
-    name: 'selection-crop',
-    params: { options },
-    run: (context, image) => {
-      const outside = toRgba(options.outsideColor ?? { r: 0, g: 0, b: 0, a: 0 });
-      const mask = buildSelectionMask(image, selector, context);
-      return applyMaskToImage(image, mask, outside);
-    },
-  };
+  return createImageNode('selection-crop', { options }, (context, image) => {
+    const outside = toRgba(options.outsideColor ?? { r: 0, g: 0, b: 0, a: 0 });
+    const mask = buildSelectionMask(image, selector, context);
+    return applyMaskToImage(image, mask, outside);
+  });
 }
 
 /**
@@ -244,10 +454,9 @@ export function createMapNode(
   name: string,
   mapper: (pixel: Pixel, x: number, y: number, context: NodeContext) => PixelLike
 ): ImageNode {
-  return {
-    name,
-    run: (context, image) => image.mapPixels((pixel, x, y) => mapper(pixel, x, y, context)),
-  };
+  return createImageNode(name, { mapper: 'custom' }, (context, image) =>
+    image.mapPixels((pixel, x, y) => mapper(pixel, x, y, context))
+  );
 }
 
 /**
@@ -255,15 +464,11 @@ export function createMapNode(
  */
 export function createFillNode(color: ColorInput): ImageNode {
   const rgba = toRgba(color);
-  return {
-    name: 'fill',
-    run: (context, image) => {
-      void context;
-      const output = image.clone();
-      output.fill(rgba);
-      return output;
-    },
-  };
+  return createImageNode('fill', { color }, (_context, image) => {
+    const output = image.clone();
+    output.fill(rgba);
+    return output;
+  });
 }
 
 /**
@@ -277,27 +482,307 @@ export type NoiseOptions = {
 };
 
 /**
+ * Options for creating a value noise node.
+ */
+export type ValueNoiseOptions = {
+  scale?: number;
+  octaves?: number;
+  persistence?: number;
+  lacunarity?: number;
+  min?: number;
+  max?: number;
+  alpha?: number;
+};
+
+/**
+ * Options for creating a Voronoi noise node.
+ */
+export type VoronoiNoiseOptions = {
+  scale?: number;
+  jitter?: number;
+  min?: number;
+  max?: number;
+  alpha?: number;
+  mode?: 'distance' | 'edge';
+};
+
+/**
+ * Options for creating a fractal noise node.
+ */
+export type FractalNoiseOptions = {
+  scale?: number;
+  octaves?: number;
+  persistence?: number;
+  lacunarity?: number;
+  min?: number;
+  max?: number;
+  alpha?: number;
+};
+
+/**
+ * Options for creating a Perlin noise node.
+ */
+export type PerlinNoiseOptions = {
+  scale?: number;
+  octaves?: number;
+  persistence?: number;
+  lacunarity?: number;
+  min?: number;
+  max?: number;
+  alpha?: number;
+};
+
+/**
+ * Options for creating a turbulence noise node.
+ */
+export type TurbulenceNoiseOptions = {
+  scale?: number;
+  octaves?: number;
+  persistence?: number;
+  lacunarity?: number;
+  min?: number;
+  max?: number;
+  alpha?: number;
+};
+
+/**
+ * Options for creating a ridged noise node.
+ */
+export type RidgedNoiseOptions = {
+  scale?: number;
+  octaves?: number;
+  persistence?: number;
+  lacunarity?: number;
+  min?: number;
+  max?: number;
+  alpha?: number;
+};
+
+/**
  * Creates a node that applies seeded noise to every pixel.
  */
 export function createNoiseNode(options: NoiseOptions = {}): ImageNode {
   const { min = 0, max = 255, alpha = 255, grayscale = true } = options;
-  return {
-    name: 'noise',
-    run: (context, image) => {
-      return image.mapPixels(() => {
-        const r = context.random.nextInt(min, max);
-        if (grayscale) {
-          return { r, g: r, b: r, a: alpha };
+  return createImageNode('noise', { min, max, alpha, grayscale }, (context, image) =>
+    image.mapPixels(() => {
+      const r = context.random.nextInt(min, max);
+      if (grayscale) {
+        return { r, g: r, b: r, a: alpha };
+      }
+      return {
+        r,
+        g: context.random.nextInt(min, max),
+        b: context.random.nextInt(min, max),
+        a: alpha,
+      };
+    })
+  );
+}
+
+/**
+ * Creates a node that generates value noise.
+ */
+export function createValueNoiseNode(options: ValueNoiseOptions = {}): ImageNode {
+  const {
+    scale = 24,
+    octaves = 1,
+    persistence = 0.5,
+    lacunarity = 2,
+    min = 0,
+    max = 255,
+    alpha = 255,
+  } = options;
+  return createImageNode('value-noise', options, (context, image) => {
+    const seed = ensureSeed(context);
+    const output = image.clone();
+    const data = output.data as Uint8Array;
+    const width = output.width;
+    const height = output.height;
+    let index = 0;
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const value = fractalValueNoise(
+          x,
+          y,
+          seed,
+          scale,
+          octaves,
+          persistence,
+          lacunarity
+        );
+        const mapped = Math.round(min + (max - min) * value);
+        data[index] = mapped;
+        data[index + 1] = mapped;
+        data[index + 2] = mapped;
+        data[index + 3] = alpha;
+        index += 4;
+      }
+    }
+    return output;
+  });
+}
+
+/**
+ * Creates a node that generates Voronoi noise.
+ */
+export function createVoronoiNoiseNode(options: VoronoiNoiseOptions = {}): ImageNode {
+  const { scale = 24, jitter = 0.75, min = 0, max = 255, alpha = 255, mode = 'distance' } = options;
+  return createImageNode('voronoi-noise', options, (context, image) => {
+    const seed = ensureSeed(context);
+    const output = image.clone();
+    const data = output.data as Uint8Array;
+    const width = output.width;
+    const height = output.height;
+    const cell = Math.max(1, scale);
+    let index = 0;
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const gx = Math.floor(x / cell);
+        const gy = Math.floor(y / cell);
+        let best = Number.POSITIVE_INFINITY;
+        let second = Number.POSITIVE_INFINITY;
+        for (let oy = -1; oy <= 1; oy += 1) {
+          for (let ox = -1; ox <= 1; ox += 1) {
+            const cx = gx + ox;
+            const cy = gy + oy;
+            const rx = hash2D(cx, cy, seed);
+            const ry = hash2D(cx + 7, cy + 13, seed);
+            const px = (cx + rx * jitter) * cell;
+            const py = (cy + ry * jitter) * cell;
+            const dx = x - px;
+            const dy = y - py;
+            const dist = dx * dx + dy * dy;
+            if (dist < best) {
+              second = best;
+              best = dist;
+            } else if (dist < second) {
+              second = dist;
+            }
+          }
         }
-        return {
-          r,
-          g: context.random.nextInt(min, max),
-          b: context.random.nextInt(min, max),
-          a: alpha,
-        };
-      });
-    },
-  };
+        const maxDist = cell * cell * 2;
+        const value =
+          mode === 'edge'
+            ? clamp01((second - best) / maxDist)
+            : clamp01(1 - best / maxDist);
+        const mapped = Math.round(min + (max - min) * value);
+        data[index] = mapped;
+        data[index + 1] = mapped;
+        data[index + 2] = mapped;
+        data[index + 3] = alpha;
+        index += 4;
+      }
+    }
+    return output;
+  });
+}
+
+/**
+ * Creates a node that generates fractal value noise.
+ */
+export function createFractalNoiseNode(options: FractalNoiseOptions = {}): ImageNode {
+  const { scale = 32, octaves = 4, persistence = 0.5, lacunarity = 2, min = 0, max = 255, alpha = 255 } = options;
+  return createImageNode('fractal-noise', options, (context, image) => {
+    const seed = ensureSeed(context);
+    const output = image.clone();
+    const data = output.data as Uint8Array;
+    const width = output.width;
+    const height = output.height;
+    let index = 0;
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const value = fractalValueNoise(x, y, seed, scale, octaves, persistence, lacunarity);
+        const mapped = Math.round(min + (max - min) * value);
+        data[index] = mapped;
+        data[index + 1] = mapped;
+        data[index + 2] = mapped;
+        data[index + 3] = alpha;
+        index += 4;
+      }
+    }
+    return output;
+  });
+}
+
+/**
+ * Creates a node that generates Perlin noise.
+ */
+export function createPerlinNoiseNode(options: PerlinNoiseOptions = {}): ImageNode {
+  const { scale = 32, octaves = 4, persistence = 0.5, lacunarity = 2, min = 0, max = 255, alpha = 255 } = options;
+  return createImageNode('perlin-noise', options, (context, image) => {
+    const seed = ensureSeed(context);
+    const output = image.clone();
+    const data = output.data as Uint8Array;
+    const width = output.width;
+    const height = output.height;
+    let index = 0;
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const value = fractalPerlinNoise(x, y, seed, scale, octaves, persistence, lacunarity);
+        const mapped = Math.round(min + (max - min) * value);
+        data[index] = mapped;
+        data[index + 1] = mapped;
+        data[index + 2] = mapped;
+        data[index + 3] = alpha;
+        index += 4;
+      }
+    }
+    return output;
+  });
+}
+
+/**
+ * Creates a node that generates turbulence noise.
+ */
+export function createTurbulenceNoiseNode(options: TurbulenceNoiseOptions = {}): ImageNode {
+  const { scale = 32, octaves = 4, persistence = 0.5, lacunarity = 2, min = 0, max = 255, alpha = 255 } = options;
+  return createImageNode('turbulence-noise', options, (context, image) => {
+    const seed = ensureSeed(context);
+    const output = image.clone();
+    const data = output.data as Uint8Array;
+    const width = output.width;
+    const height = output.height;
+    let index = 0;
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const value = fractalTurbulenceNoise(x, y, seed, scale, octaves, persistence, lacunarity);
+        const mapped = Math.round(min + (max - min) * value);
+        data[index] = mapped;
+        data[index + 1] = mapped;
+        data[index + 2] = mapped;
+        data[index + 3] = alpha;
+        index += 4;
+      }
+    }
+    return output;
+  });
+}
+
+/**
+ * Creates a node that generates ridged noise.
+ */
+export function createRidgedNoiseNode(options: RidgedNoiseOptions = {}): ImageNode {
+  const { scale = 32, octaves = 4, persistence = 0.5, lacunarity = 2, min = 0, max = 255, alpha = 255 } = options;
+  return createImageNode('ridged-noise', options, (context, image) => {
+    const seed = ensureSeed(context);
+    const output = image.clone();
+    const data = output.data as Uint8Array;
+    const width = output.width;
+    const height = output.height;
+    let index = 0;
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const value = fractalRidgedNoise(x, y, seed, scale, octaves, persistence, lacunarity);
+        const mapped = Math.round(min + (max - min) * value);
+        data[index] = mapped;
+        data[index + 1] = mapped;
+        data[index + 2] = mapped;
+        data[index + 3] = alpha;
+        index += 4;
+      }
+    }
+    return output;
+  });
 }
 
 /**
@@ -324,39 +809,35 @@ export function createConvolutionNode(
   const normalize = options.normalize !== false;
   const divisor = normalize ? (sum === 0 ? 1 : sum) : 1;
 
-  return {
-    name,
-    run: (context, image) => {
-      void context;
-      if (image.format === 'rgba8') {
-        return convolveRgba8(image, kernel, divisor, radius);
-      }
-      const output = new ImageBuffer(image.width, image.height, image.format);
-      for (let y = 0; y < image.height; y += 1) {
-        for (let x = 0; x < image.width; x += 1) {
-          let r = 0;
-          let g = 0;
-          let b = 0;
-          let a = 0;
-          for (let ky = 0; ky < size; ky += 1) {
-            for (let kx = 0; kx < size; kx += 1) {
-              const weight = kernel[ky][kx];
-              if (weight === 0) continue;
-              const sx = clamp(x + kx - radius, 0, image.width - 1);
-              const sy = clamp(y + ky - radius, 0, image.height - 1);
-              const pixel = image.getPixel(sx, sy);
-              r += pixel.r * weight;
-              g += pixel.g * weight;
-              b += pixel.b * weight;
-              a += pixel.a * weight;
-            }
+  return createImageNode(name, { kernel, normalize }, (_context, image) => {
+    if (image.format === 'rgba8') {
+      return convolveRgba8(image, kernel, divisor, radius);
+    }
+    const output = new ImageBuffer(image.width, image.height, image.format);
+    for (let y = 0; y < image.height; y += 1) {
+      for (let x = 0; x < image.width; x += 1) {
+        let r = 0;
+        let g = 0;
+        let b = 0;
+        let a = 0;
+        for (let ky = 0; ky < size; ky += 1) {
+          for (let kx = 0; kx < size; kx += 1) {
+            const weight = kernel[ky][kx];
+            if (weight === 0) continue;
+            const sx = clamp(x + kx - radius, 0, image.width - 1);
+            const sy = clamp(y + ky - radius, 0, image.height - 1);
+            const pixel = image.getPixel(sx, sy);
+            r += pixel.r * weight;
+            g += pixel.g * weight;
+            b += pixel.b * weight;
+            a += pixel.a * weight;
           }
-          output.setPixel(x, y, { r: r / divisor, g: g / divisor, b: b / divisor, a: a / divisor });
         }
+        output.setPixel(x, y, { r: r / divisor, g: g / divisor, b: b / divisor, a: a / divisor });
       }
-      return output;
-    },
-  };
+    }
+    return output;
+  });
 }
 
 /**
@@ -436,20 +917,17 @@ export function createThresholdNode(threshold: number, low = 0, high = 255): Ima
  * Creates a node that fills the image with a random color.
  */
 export function createRandomFillNode(alpha = 255): ImageNode {
-  return {
-    name: 'random-fill',
-    run: (context, image) => {
-      const color = {
-        r: context.random.nextInt(0, 255),
-        g: context.random.nextInt(0, 255),
-        b: context.random.nextInt(0, 255),
-        a: alpha,
-      };
-      const output = image.clone();
-      output.fill(color);
-      return output;
-    },
-  };
+  return createImageNode('random-fill', { alpha }, (context, image) => {
+    const color = {
+      r: context.random.nextInt(0, 255),
+      g: context.random.nextInt(0, 255),
+      b: context.random.nextInt(0, 255),
+      a: alpha,
+    };
+    const output = image.clone();
+    output.fill(color);
+    return output;
+  });
 }
 
 /**
@@ -461,10 +939,11 @@ export function createGaussianNoiseNode(
   alpha = 255,
   grayscale = false
 ): ImageNode {
-  return {
-    name: 'gaussian-noise',
-    run: (context, image) => {
-      return image.mapPixels((pixel) => {
+  return createImageNode(
+    'gaussian-noise',
+    { mean, stdDev, alpha, grayscale },
+    (context, image) =>
+      image.mapPixels((pixel) => {
         const n = context.random.nextGaussian(mean, stdDev);
         if (grayscale) {
           const value = clampByte(pixel.r + n);
@@ -476,9 +955,8 @@ export function createGaussianNoiseNode(
           b: clampByte(pixel.b + n),
           a: alpha,
         };
-      });
-    },
-  };
+      })
+  );
 }
 
 /**
@@ -491,17 +969,17 @@ export function createSaltPepperNoiseNode(
 ): ImageNode {
   const saltRgba = toRgba(salt);
   const pepperRgba = toRgba(pepper);
-  return {
-    name: 'salt-pepper',
-    run: (context, image) => {
-      return image.mapPixels((pixel) => {
+  return createImageNode(
+    'salt-pepper',
+    { probability, salt, pepper },
+    (context, image) =>
+      image.mapPixels((pixel) => {
         const roll = context.random.next();
         if (roll < probability / 2) return pepperRgba;
         if (roll < probability) return saltRgba;
         return pixel;
-      });
-    },
-  };
+      })
+  );
 }
 
 /**
@@ -515,16 +993,15 @@ export function createCheckerboardNode(
   const a = toRgba(colorA);
   const b = toRgba(colorB);
   const size = Math.max(1, Math.floor(tileSize));
-  return {
-    name: 'checkerboard',
-    run: (context, image) => {
-      void context;
-      return image.mapPixels((_pixel, x, y) => {
+  return createImageNode(
+    'checkerboard',
+    { tileSize: size, colorA, colorB },
+    (_context, image) =>
+      image.mapPixels((_pixel, x, y) => {
         const index = (Math.floor(x / size) + Math.floor(y / size)) % 2;
         return index === 0 ? a : b;
-      });
-    },
-  };
+      })
+  );
 }
 
 /**
@@ -544,15 +1021,12 @@ export type RectOptions = {
 export function createRectNode(options: RectOptions): ImageNode {
   const color = toRgba(options.color);
   const selector = createRectSelector(options);
-  return {
-    name: 'rect',
-    run: (context, image) => {
-      const output = image.clone();
-      const mask = buildSelectionMask(image, selector, context);
-      applyColorMask(output, mask, color);
-      return output;
-    },
-  };
+  return createImageNode('rect', options, (context, image) => {
+    const output = image.clone();
+    const mask = buildSelectionMask(image, selector, context);
+    applyColorMask(output, mask, color);
+    return output;
+  });
 }
 
 /**
@@ -571,15 +1045,12 @@ export type CircleOptions = {
 export function createCircleNode(options: CircleOptions): ImageNode {
   const color = toRgba(options.color);
   const selector = createCircleSelector(options);
-  return {
-    name: 'circle',
-    run: (context, image) => {
-      const output = image.clone();
-      const mask = buildSelectionMask(image, selector, context);
-      applyColorMask(output, mask, color);
-      return output;
-    },
-  };
+  return createImageNode('circle', options, (context, image) => {
+    const output = image.clone();
+    const mask = buildSelectionMask(image, selector, context);
+    applyColorMask(output, mask, color);
+    return output;
+  });
 }
 
 /**
@@ -587,24 +1058,20 @@ export function createCircleNode(options: CircleOptions): ImageNode {
  */
 export function createPaletteMapNode(palette: ColorInput[]): ImageNode {
   const colors = palette.map((color) => toRgba(color));
-  return {
-    name: 'palette-map',
-    run: (context, image) => {
-      void context;
-      return image.mapPixels((pixel) => {
-        let best = colors[0];
-        let bestDistance = Number.POSITIVE_INFINITY;
-        for (const color of colors) {
-          const distance = colorDistance(pixel, color);
-          if (distance < bestDistance) {
-            bestDistance = distance;
-            best = color;
-          }
+  return createImageNode('palette-map', { palette }, (_context, image) =>
+    image.mapPixels((pixel) => {
+      let best = colors[0];
+      let bestDistance = Number.POSITIVE_INFINITY;
+      for (const color of colors) {
+        const distance = colorDistance(pixel, color);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = color;
         }
-        return best;
-      });
-    },
-  };
+      }
+      return best;
+    })
+  );
 }
 
 /**
@@ -639,20 +1106,18 @@ export function buildGaussianKernel(size: number, sigma = 1.5): number[][] {
  * Creates a Gaussian blur node.
  */
 export function createGaussianBlurNode(size = 9, sigma = 2): ImageNode {
-  return {
-    name: 'gaussian-blur',
-    params: { size, sigma },
-    run: (context, image) => {
-      void context;
+  return createImageNode(
+    'gaussian-blur',
+    { size, sigma },
+    async (context, image) => {
       if (image.format !== 'rgba8') {
-        return createConvolutionNode('gaussian-blur', buildGaussianKernel(size, sigma)).run(
-          context,
-          image
-        );
+        const node = createConvolutionNode('gaussian-blur', buildGaussianKernel(size, sigma));
+        const state: NodeState = { images: { [DEFAULT_IMAGE_KEY]: image }, data: {} };
+        return runNodeImage(node, context, state);
       }
       return gaussianBlurRgba8(image, size, sigma);
-    },
-  };
+    }
+  );
 }
 
 /**
@@ -685,13 +1150,42 @@ export function createResizeNode(
   height: number,
   options: ResizeOptions = {}
 ): ImageNode {
+  return createImageNode('resize', { width, height, options }, async (_context, image) =>
+    resizeImage(image, width, height, options)
+  );
+}
+
+/**
+ * Creates a node that renders text onto an image.
+ */
+export function createTextNode(options: TextOptions): ImageNode<TextOptions> {
+  return createImageNode('text', options, async (_context, image, params) =>
+    renderText(image, params)
+  );
+}
+
+async function resolveImageInput(
+  source: ImageInput,
+  context: NodeContext,
+  state: NodeState
+): Promise<ImageBuffer> {
+  if (source instanceof ImageBuffer) {
+    return source;
+  }
+  if (isImageNode(source)) {
+    return runNodeImage(source, context, state);
+  }
+  return loadImage(source);
+}
+
+function isImageNode(value: ImageInput): value is ImageNode {
+  return typeof (value as ImageNode).run === 'function';
+}
+
+function withImage(state: NodeState, key: string, image: ImageBuffer): NodeState {
   return {
-    name: 'resize',
-    params: { width, height, options },
-    run: async (context, image) => {
-      void context;
-      return resizeImage(image, width, height, options);
-    },
+    images: { ...state.images, [key]: image },
+    data: { ...state.data },
   };
 }
 
@@ -752,33 +1246,13 @@ function applyColorMask(image: ImageBuffer, mask: Uint8Array, color: PixelLike):
   }
 }
 
-function resolveMaskSource(
-  source: MaskMapSource,
-  context: NodeContext,
-  base: ImageBuffer
-): Promise<ImageBuffer> | ImageBuffer {
-  if (source instanceof ImageBuffer) {
-    return source;
-  }
-  if (isImageNode(source)) {
-    return source.run(context, base);
-  }
-  return loadImage(source);
-}
-
-function isImageNode(value: MaskMapSource): value is ImageNode {
-  return typeof (value as ImageNode).run === 'function';
-}
-
 function mapMaskComposite(
   base: ImageBuffer,
   mask: ImageBuffer,
   layers: { color: Pixel; tolerance: number; image: ImageBuffer }[],
   defaultColor?: ColorInput
 ): ImageBuffer {
-  const width = base.width;
-  const height = base.height;
-  const output = new ImageBuffer(width, height, 'rgba8');
+  const output = new ImageBuffer(base.width, base.height, 'rgba8');
   const baseData = base.data as Uint8Array;
   const maskData = mask.data as Uint8Array;
   const outData = output.data as Uint8Array;
@@ -951,4 +1425,178 @@ function clampByte(value: number): number {
 function applyGamma(value: number, gamma: number): number {
   const normalized = clamp(value, 0, 255) / 255;
   return Math.round(Math.pow(normalized, gamma) * 255);
+}
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
+function smoothstep(t: number): number {
+  return t * t * (3 - 2 * t);
+}
+
+function ensureSeed(context: NodeContext): number {
+  const existing = context.stash.get('noiseSeed');
+  if (typeof existing === 'number') {
+    return existing;
+  }
+  const seed = context.random.nextInt(0, 0x7fffffff);
+  context.stash.set('noiseSeed', seed);
+  return seed;
+}
+
+function hash2D(x: number, y: number, seed: number): number {
+  let n = Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(seed, 144664877);
+  n = (n ^ (n >>> 13)) >>> 0;
+  n = Math.imul(n, 1274126177) >>> 0;
+  n ^= n >>> 16;
+  return (n >>> 0) / 4294967295;
+}
+
+function gradientFromHash(value: number): { x: number; y: number } {
+  const angle = value * Math.PI * 2;
+  return { x: Math.cos(angle), y: Math.sin(angle) };
+}
+
+function perlinNoise(x: number, y: number, seed: number, scale: number): number {
+  const cell = Math.max(1, scale);
+  const gx = Math.floor(x / cell);
+  const gy = Math.floor(y / cell);
+  const tx = (x - gx * cell) / cell;
+  const ty = (y - gy * cell) / cell;
+  const g00 = gradientFromHash(hash2D(gx, gy, seed));
+  const g10 = gradientFromHash(hash2D(gx + 1, gy, seed));
+  const g01 = gradientFromHash(hash2D(gx, gy + 1, seed));
+  const g11 = gradientFromHash(hash2D(gx + 1, gy + 1, seed));
+  const d00 = g00.x * tx + g00.y * ty;
+  const d10 = g10.x * (tx - 1) + g10.y * ty;
+  const d01 = g01.x * tx + g01.y * (ty - 1);
+  const d11 = g11.x * (tx - 1) + g11.y * (ty - 1);
+  const sx = smoothstep(tx);
+  const sy = smoothstep(ty);
+  const ix0 = lerp(d00, d10, sx);
+  const ix1 = lerp(d01, d11, sx);
+  return clamp01((lerp(ix0, ix1, sy) + 1) / 2);
+}
+
+function valueNoise(x: number, y: number, seed: number, scale: number): number {
+  const cell = Math.max(1, scale);
+  const gx = Math.floor(x / cell);
+  const gy = Math.floor(y / cell);
+  const tx = (x - gx * cell) / cell;
+  const ty = (y - gy * cell) / cell;
+  const v00 = hash2D(gx, gy, seed);
+  const v10 = hash2D(gx + 1, gy, seed);
+  const v01 = hash2D(gx, gy + 1, seed);
+  const v11 = hash2D(gx + 1, gy + 1, seed);
+  const sx = smoothstep(tx);
+  const sy = smoothstep(ty);
+  const ix0 = lerp(v00, v10, sx);
+  const ix1 = lerp(v01, v11, sx);
+  return lerp(ix0, ix1, sy);
+}
+
+function fractalPerlinNoise(
+  x: number,
+  y: number,
+  seed: number,
+  scale: number,
+  octaves: number,
+  persistence: number,
+  lacunarity: number
+): number {
+  const steps = Math.max(1, Math.floor(octaves));
+  let amplitude = 1;
+  let frequency = 1;
+  let total = 0;
+  let max = 0;
+  for (let i = 0; i < steps; i += 1) {
+    const cell = Math.max(1, scale / frequency);
+    total += perlinNoise(x, y, seed + i * 1013, cell) * amplitude;
+    max += amplitude;
+    amplitude *= persistence;
+    frequency *= lacunarity;
+  }
+  return max === 0 ? 0 : total / max;
+}
+
+function fractalTurbulenceNoise(
+  x: number,
+  y: number,
+  seed: number,
+  scale: number,
+  octaves: number,
+  persistence: number,
+  lacunarity: number
+): number {
+  const steps = Math.max(1, Math.floor(octaves));
+  let amplitude = 1;
+  let frequency = 1;
+  let total = 0;
+  let max = 0;
+  for (let i = 0; i < steps; i += 1) {
+    const cell = Math.max(1, scale / frequency);
+    const base = perlinNoise(x, y, seed + i * 1013, cell);
+    const value = Math.abs(base * 2 - 1);
+    total += value * amplitude;
+    max += amplitude;
+    amplitude *= persistence;
+    frequency *= lacunarity;
+  }
+  return max === 0 ? 0 : total / max;
+}
+
+function fractalRidgedNoise(
+  x: number,
+  y: number,
+  seed: number,
+  scale: number,
+  octaves: number,
+  persistence: number,
+  lacunarity: number
+): number {
+  const steps = Math.max(1, Math.floor(octaves));
+  let amplitude = 1;
+  let frequency = 1;
+  let total = 0;
+  let max = 0;
+  for (let i = 0; i < steps; i += 1) {
+    const cell = Math.max(1, scale / frequency);
+    const base = perlinNoise(x, y, seed + i * 1013, cell);
+    let value = 1 - Math.abs(base * 2 - 1);
+    value *= value;
+    total += value * amplitude;
+    max += amplitude;
+    amplitude *= persistence;
+    frequency *= lacunarity;
+  }
+  return max === 0 ? 0 : total / max;
+}
+
+function fractalValueNoise(
+  x: number,
+  y: number,
+  seed: number,
+  scale: number,
+  octaves: number,
+  persistence: number,
+  lacunarity: number
+): number {
+  const steps = Math.max(1, Math.floor(octaves));
+  let amplitude = 1;
+  let frequency = 1;
+  let total = 0;
+  let max = 0;
+  for (let i = 0; i < steps; i += 1) {
+    const cell = Math.max(1, scale / frequency);
+    total += valueNoise(x, y, seed + i * 1013, cell) * amplitude;
+    max += amplitude;
+    amplitude *= persistence;
+    frequency *= lacunarity;
+  }
+  return max === 0 ? 0 : total / max;
 }

@@ -1,6 +1,7 @@
 # @dilemmagx/palette
 
 Palette is a CLI + TypeScript toolkit that reads a single input (HEX, data URI, URL, or local path), detects its type automatically, and generates palettes.
+It supports both built-in and custom algorithms.
 
 ## Install
 
@@ -42,7 +43,7 @@ Output:
 - URL: `http://` or `https://`
 - Path: local image path (default fallback)
 
-## Algorithms
+## Built-in Algorithms
 
 - analogous
 - complementary
@@ -53,6 +54,20 @@ Output:
 - monet
 
 Monet uses image quantization and color scoring inspired by Material Color Utilities.
+
+## Custom Algorithms
+
+```ts
+import { registerAlgorithm, generatePaletteFromHex } from '@dilemmagx/palette';
+
+registerAlgorithm('duotone', (input) => {
+  const base = input.baseColor;
+  return [base, '#000000'];
+});
+
+const result = await generatePaletteFromHex('#ff7a18', { algorithm: 'duotone' });
+console.log(result.colors);
+```
 
 ## Presets
 

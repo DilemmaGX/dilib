@@ -20,10 +20,19 @@ export {
 export type { Pixel, PixelFormat, PixelLike, ImageSource } from './core/types';
 export { ImageBuffer } from './core/image';
 export { SeededRandom, createRandom } from './core/random';
-export type { ResizeOptions, SaveImageOptions } from './core/sources';
+export type {
+  ResizeOptions,
+  SaveImageOptions,
+  TextFont,
+  TextFontSource,
+  TextLayout,
+  TextOptions,
+  TextStyle,
+} from './core/sources';
 export {
   imageToBuffer,
   loadImage,
+  renderText,
   resizeImage,
   saveImage,
   sourceFromBuffer,
@@ -34,18 +43,34 @@ export {
 } from './core/sources';
 export type {
   CircleSelectorOptions,
+  ImageInput,
   ImageNode,
+  ImageNodeOptions,
   MaskMapEntry,
   MaskMapOptions,
   MaskMapSource,
+  NodeDefinition,
   NodeContext,
+  NodeResult,
+  NodeState,
   ParametricNode,
+  PixelMatrix,
+  PixelNodeInfo,
+  PixelNodeRunner,
   PixelSelector,
+  FractalNoiseOptions,
+  PerlinNoiseOptions,
   RectSelectorOptions,
   SelectionMode,
   SelectionOptions,
+  SimpleNodeDefinition,
+  ValueNoiseOptions,
+  RidgedNoiseOptions,
+  TurbulenceNoiseOptions,
+  VoronoiNoiseOptions,
 } from './core/nodes';
 export {
+  DEFAULT_IMAGE_KEY,
   createBrightnessNode,
   createCircleSelector,
   createCheckerboardNode,
@@ -60,11 +85,19 @@ export {
   createGaussianNoiseNode,
   createGrayscaleNode,
   createInvertNode,
+  createImageNode,
+  createPixelNode,
   createLumaSelector,
   createMapNode,
   createMaskMapNode,
   createMaskedNode,
   createNoiseNode,
+  createFractalNoiseNode,
+  createPerlinNoiseNode,
+  createRidgedNoiseNode,
+  createTurbulenceNoiseNode,
+  createValueNoiseNode,
+  createVoronoiNoiseNode,
   createPaletteMapNode,
   createParamNode,
   createRandomFillNode,
@@ -75,7 +108,15 @@ export {
   createSaltPepperNoiseNode,
   createSharpenNode,
   createThresholdNode,
+  createTextNode,
+  defineNode,
+  getImage,
+  mergeNodeState,
+  node,
+  runNode,
+  runNodeImage,
   buildBoxKernel,
   buildGaussianKernel,
 } from './core/nodes';
-export { Pipeline, createExamplePipeline } from './core/pipeline';
+export type { PipelineInput, PipelineOptions } from './core/pipeline';
+export { Pipeline, createExamplePipeline, pipeline } from './core/pipeline';

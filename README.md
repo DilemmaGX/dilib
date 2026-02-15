@@ -26,6 +26,21 @@ npm install
 
 ## Projects
 
+### [orchestra](./orchestra)
+
+A programmable, node-based image synthesis and processing toolkit with seeded randomness and
+extensible nodes for production pipelines.
+
+- **Features**: Pipeline runner, pixel matrix API, text rendering, and built-in noise generators.
+- **License**: GPL-3.0
+
+### [palette](./palette)
+
+A CLI + TypeScript palette generator that supports both built-in and custom algorithms.
+
+- **Features**: Input auto-detection (HEX/data URI/URL/path) and algorithm registry.
+- **License**: GPL-3.0
+
 ### [minidoc](./minidoc)
 
 A lightweight, powerful Markdown documentation generator with advanced code block features.

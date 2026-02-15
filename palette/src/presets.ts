@@ -1,7 +1,6 @@
 /**
- * Common palette presets.
+ * RGBA color in 0-255 integer space.
  */
-
 export interface RgbaColor {
   r: number;
   g: number;
@@ -15,9 +14,9 @@ export interface RgbaColor {
  */
 export function getGameBoyPalette(): RgbaColor[] {
   return [
-    { r: 155, g: 188, b: 15, a: 255 }, // #9bbc0f
-    { r: 139, g: 172, b: 15, a: 255 }, // #8bac0f
-    { r: 48, g: 98, b: 48, a: 255 }, // #306230
-    { r: 15, g: 56, b: 15, a: 255 }, // #0f380f
+    { r: 155, g: 188, b: 15, a: 255 },
+    { r: 139, g: 172, b: 15, a: 255 },
+    { r: 48, g: 98, b: 48, a: 255 },
+    { r: 15, g: 56, b: 15, a: 255 },
   ];
 }

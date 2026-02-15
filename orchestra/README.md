@@ -1,7 +1,8 @@
 # @dilemmagx/orchestra
 
 Orchestra is a programmable, node-based image synthesis and processing toolkit.
-It focuses on deterministic, pixel-accurate workflows with simple composable nodes.
+The engine is centered around a flexible node state, so every built-in node is created through
+the same custom node API that you use in your own projects.
 
 ## Install
 
@@ -15,29 +16,150 @@ npm i @dilemmagx/orchestra
 import { Pipeline, createNoiseNode, createInvertNode, sourceFromEmpty } from '@dilemmagx/orchestra';
 
 const pipeline = new Pipeline().add(createNoiseNode({ grayscale: true })).add(createInvertNode());
-
 const image = await pipeline.run(sourceFromEmpty(256, 256, 'rgba8'), { seed: 42 });
 ```
 
-## Resize & Palette Mapping
+## Core Concepts
+
+- A pipeline runs nodes sequentially.
+- Each node receives a shared context and a mutable state object.
+- The default image key is "image", but nodes may read and write additional image keys.
+
+## Simplified Node API
+
+```ts
+import { node, pipeline, sourceFromEmpty } from '@dilemmagx/orchestra';
+
+const gradient = node({
+  name: 'gradient',
+  params: { from: '#22d3ee', to: '#0f172a' },
+  run: (pixels, { params }) => {
+    const height = pixels.length;
+    const width = pixels[0]?.length ?? 0;
+    return pixels.map((row, y) =>
+      row.map((_pixel, x) => {
+        const t = x / Math.max(1, width - 1);
+        return {
+          r: Math.round(34 + (15 - 34) * t),
+          g: Math.round(211 + (23 - 211) * t),
+          b: Math.round(238 + (42 - 238) * t),
+          a: 255,
+        };
+      })
+    );
+  },
+});
+
+const image = await pipeline(gradient).run(sourceFromEmpty(512, 256, 'rgba8'));
+```
+
+Nodes created with `node()` receive a 2D pixel matrix by default. Node names are optional;
+if omitted, Orchestra assigns incremental names like `node-1` to improve traceability.
+
+## Noise Suite
+
+```ts
+import {
+  pipeline,
+  sourceFromEmpty,
+  createValueNoiseNode,
+  createVoronoiNoiseNode,
+  createFractalNoiseNode,
+} from '@dilemmagx/orchestra';
+
+const image = await pipeline(
+  createValueNoiseNode({ scale: 32, octaves: 2, min: 20, max: 220 }),
+  createVoronoiNoiseNode({ scale: 28, jitter: 0.8, mode: 'edge' }),
+  createFractalNoiseNode({ scale: 40, octaves: 4, persistence: 0.55 })
+).run(sourceFromEmpty(512, 512, 'rgba8'), { seed: 42 });
+```
+
+```ts
+import {
+  pipeline,
+  sourceFromEmpty,
+  createPerlinNoiseNode,
+  createTurbulenceNoiseNode,
+  createRidgedNoiseNode,
+} from '@dilemmagx/orchestra';
+
+const image = await pipeline(
+  createPerlinNoiseNode({ scale: 48, octaves: 3 }),
+  createTurbulenceNoiseNode({ scale: 36, octaves: 4, persistence: 0.6 }),
+  createRidgedNoiseNode({ scale: 40, octaves: 5, persistence: 0.55 })
+).run(sourceFromEmpty(512, 512, 'rgba8'), { seed: 'detail' });
+```
+
+## Text Tool
+
+```ts
+import { createTextNode, pipeline, sourceFromEmpty } from '@dilemmagx/orchestra';
+
+const text = createTextNode({
+  text: 'HELLO ORCHESTRA',
+  font: {
+    family: 'Inter',
+    source: { filePath: './fonts/Inter-SemiBold.ttf' },
+    weight: 600,
+  },
+  layout: { x: 64, y: 64, maxWidth: 640, align: 'left' },
+  style: { fontSize: 48, bold: true, underline: true },
+});
+
+const image = await pipeline(text).run(sourceFromEmpty(800, 450, 'rgba8'));
+```
+
+Provide a font file to keep output identical across machines. If a font source is not supplied,
+the system font family is used when available.
+
+## Custom Node
+
+```ts
+import { Pipeline, createImageNode, sourceFromEmpty } from '@dilemmagx/orchestra';
+
+const posterize = createImageNode(
+  'posterize',
+  { step: 32 },
+  (_context, image, params) =>
+    image.mapPixels((pixel) => {
+      const next = Math.round(pixel.r / params.step) * params.step;
+      return { r: next, g: next, b: next, a: pixel.a };
+    })
+);
+
+const pipeline = new Pipeline().add(posterize);
+const image = await pipeline.run(sourceFromEmpty(512, 512, 'rgba8'));
+```
+
+## Advanced Node State
 
 ```ts
 import {
   Pipeline,
-  createResizeNode,
-  createPaletteMapNode,
-  saveImage,
-  sourceFromUrl,
+  defineNode,
+  getImage,
+  sourceFromEmpty,
+  DEFAULT_IMAGE_KEY,
 } from '@dilemmagx/orchestra';
 
-const palette = ['#9bbc0f', '#8bac0f', '#306230', '#0f380f'];
-const pipeline = new Pipeline().add(createResizeNode(128, 85)).add(createPaletteMapNode(palette));
+const stashStats = defineNode({
+  name: 'stash-stats',
+  run: (_context, state) => {
+    const image = getImage(state, DEFAULT_IMAGE_KEY);
+    return {
+      data: {
+        pixelCount: image.width * image.height,
+      },
+    };
+  },
+});
 
-const image = await pipeline.run(sourceFromUrl('https://example.com/image.jpg'));
-await saveImage(image, './gameboy.png');
+const pipeline = new Pipeline().add(stashStats);
+const state = await pipeline.runState(sourceFromEmpty(256, 256, 'rgba8'));
+console.log(state.data.pixelCount);
 ```
 
-## Color Mask Mapping
+## Mask Mapping
 
 ```ts
 import {
@@ -46,13 +168,14 @@ import {
   createGaussianBlurNode,
   createMapNode,
   sourceFromUrl,
+  toRgba,
 } from '@dilemmagx/orchestra';
 
 const mask = createMapNode('mask', (_pixel, x, y) => {
   const dx = x - 128;
   const dy = y - 128;
   const inside = dx * dx + dy * dy <= 96 * 96;
-  return inside ? '#ffffff' : '#000000';
+  return inside ? toRgba('#ffffff') : toRgba('#000000');
 });
 
 const mapped = createMaskMapNode(mask, [
@@ -63,35 +186,7 @@ const pipeline = new Pipeline().add(mapped);
 const image = await pipeline.run(sourceFromUrl('https://example.com/image.jpg'));
 ```
 
-Mask mapping uses color keys to stitch multiple image results. Each entry maps a mask
-color to a source image or node output, with optional tolerance.
-
-You can also use a dedicated crop node:
-
-```ts
-import { createSelectionCropNode } from '@dilemmagx/orchestra';
-
-const crop = createSelectionCropNode(selector, { outsideColor: '#00000000' });
-```
-
-## Color Formats
-
-```ts
-import { toRgba, hsvaToRgba } from '@dilemmagx/orchestra';
-
-const rgba = toRgba('#ffcc00');
-const other = hsvaToRgba({ h: 120, s: 50, v: 90, a: 1 });
-```
-
-## Common Nodes
-
-```ts
-import { Pipeline, createGrayscaleNode, createGammaNode } from '@dilemmagx/orchestra';
-
-const pipeline = new Pipeline().add(createGrayscaleNode()).add(createGammaNode(1.2));
-```
-
-Built-in nodes:
+## Built-in Nodes
 
 - createBrightnessNode
 - createCheckerboardNode
@@ -106,6 +201,12 @@ Built-in nodes:
 - createGrayscaleNode
 - createInvertNode
 - createNoiseNode
+- createFractalNoiseNode
+- createPerlinNoiseNode
+- createRidgedNoiseNode
+- createTurbulenceNoiseNode
+- createValueNoiseNode
+- createVoronoiNoiseNode
 - createPaletteMapNode
 - createRandomFillNode
 - createRectNode
@@ -113,8 +214,9 @@ Built-in nodes:
 - createSaltPepperNoiseNode
 - createSharpenNode
 - createThresholdNode
+- createTextNode
 
-Selectors and masking:
+Selectors and masking helpers:
 
 - createAlphaSelector
 - createCircleSelector
@@ -123,22 +225,6 @@ Selectors and masking:
 - createMaskedNode
 - createRectSelector
 - createSelectionCropNode
-
-## Custom Node
-
-```ts
-import { Pipeline, createParamNode, sourceFromEmpty } from '@dilemmagx/orchestra';
-
-const posterize = createParamNode('posterize', { step: 32 }, (_context, image, params) =>
-  image.mapPixels((pixel) => {
-    const next = Math.round(pixel.r / params.step) * params.step;
-    return { r: next, g: next, b: next, a: pixel.a };
-  })
-);
-
-const pipeline = new Pipeline().add(posterize);
-const image = await pipeline.run(sourceFromEmpty(512, 512, 'rgba8'));
-```
 
 ## License
 

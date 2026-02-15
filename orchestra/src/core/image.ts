@@ -53,6 +53,32 @@ export class ImageBuffer {
   }
 
   /**
+   * Creates an ImageBuffer from a 2D pixel matrix.
+   */
+  static fromMatrix(matrix: Pixel[][], format: PixelFormat = 'rgba8'): ImageBuffer {
+    if (matrix.length === 0) {
+      throw new Error('Pixel matrix cannot be empty');
+    }
+    const height = matrix.length;
+    const width = matrix[0]?.length ?? 0;
+    if (width === 0) {
+      throw new Error('Pixel matrix rows cannot be empty');
+    }
+    for (const row of matrix) {
+      if (row.length !== width) {
+        throw new Error('Pixel matrix rows must have consistent lengths');
+      }
+    }
+    const image = new ImageBuffer(width, height, format);
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        image.setPixel(x, y, matrix[y][x]);
+      }
+    }
+    return image;
+  }
+
+  /**
    * Clones the buffer and its pixel data.
    */
   clone(): ImageBuffer {
