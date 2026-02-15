@@ -233,7 +233,7 @@ export class ImageBuffer {
 
 function toByte(value: number): number {
   if (Number.isNaN(value) || !Number.isFinite(value)) return 0;
-  const scaled = value <= 1 ? value * 255 : value;
+  const scaled = value <= 1 && !Number.isInteger(value) ? value * 255 : value;
   return Math.max(0, Math.min(255, Math.round(scaled)));
 }
 

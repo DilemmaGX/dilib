@@ -25,7 +25,8 @@ export type BuiltInPaletteAlgorithm =
   | 'tetradic'
   | 'split-complementary'
   | 'monochrome'
-  | 'monet';
+  | 'monet'
+  | 'dominant';
 
 /**
  * Palette algorithm name, including custom algorithms.
@@ -352,6 +353,15 @@ function registerBuiltInAlgorithms(): void {
     const sourceArgb = argbFromHex(input.baseColor);
     return buildMonetPaletteFromSourceArgb(sourceArgb, resolveMonetCount(input.count, 6));
   });
+  registerAlgorithm('dominant', async (input) => {
+    if (input.buffer) {
+      const colors = await extractDominantPalette(input.buffer, resolveCount(input.count, 8));
+      if (colors.length > 0) {
+        return colors;
+      }
+    }
+    return buildHslPaletteColors(input, 'monochrome');
+  });
 }
 
 registerBuiltInAlgorithms();
@@ -553,6 +563,75 @@ async function extractMonetPalette(buffer: Buffer, count: number): Promise<strin
   return buildMonetPaletteFromSourceArgb(sourceArgb, count);
 }
 
+async function extractDominantPalette(buffer: Buffer, count: number): Promise<string[]> {
+  const { data, info } = await sharp(buffer)
+    .resize({ width: 96, height: 96, fit: 'inside' })
+    .removeAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const step = info.channels;
+  const pixels: number[] = [];
+  for (let i = 0; i < data.length; i += step) {
+    const r = data[i] ?? 0;
+    const g = data[i + 1] ?? 0;
+    const b = data[i + 2] ?? 0;
+    pixels.push(argbFromRgb(r, g, b));
+  }
+  if (pixels.length === 0) return [];
+  const sampled = downsamplePixels(pixels, 2400);
+  const quantized = QuantizerCelebi.quantize(sampled, 128);
+  const entries = Array.from(quantized.entries()).map(([argb, population]) => ({
+    rgb: argbToRgb(argb),
+    count: population,
+  }));
+  if (entries.length === 0) return [];
+  entries.sort((a, b) => b.count - a.count);
+  const totalCount = entries.reduce((sum, entry) => sum + entry.count, 0);
+  const coverageTarget = 0.95;
+  const candidateEntries: typeof entries = [];
+  let coverage = 0;
+  for (const entry of entries) {
+    if (candidateEntries.length >= count) {
+      candidateEntries.push(entry);
+      continue;
+    }
+    candidateEntries.push(entry);
+    coverage += entry.count / Math.max(1, totalCount);
+    if (coverage >= coverageTarget) {
+      break;
+    }
+  }
+  if (candidateEntries.length < count) {
+    candidateEntries.splice(0, candidateEntries.length, ...entries);
+  }
+  if (entries.length <= count) {
+    return entries.map((entry) => rgbToHex(entry.rgb));
+  }
+  const maxCount = Math.max(1, entries[0]?.count ?? 1);
+  const seeds: RgbColor[] = [candidateEntries[0].rgb];
+  while (seeds.length < count) {
+    let best: (typeof entries)[number] | null = null;
+    let bestScore = -1;
+    for (const entry of candidateEntries) {
+      if (seeds.some((seed) => rgbDistanceSq(seed, entry.rgb) === 0)) continue;
+      let minDist = Number.POSITIVE_INFINITY;
+      for (const seed of seeds) {
+        minDist = Math.min(minDist, rgbDistanceSq(seed, entry.rgb));
+      }
+      const weight = entry.count / maxCount;
+      const score = minDist * (0.2 + Math.sqrt(weight));
+      if (score > bestScore) {
+        bestScore = score;
+        best = entry;
+      }
+    }
+    if (!best) break;
+    seeds.push(best.rgb);
+  }
+  const refined = refineCentroids(seeds, entries);
+  return refined.slice(0, count).map((color) => rgbToHex(color));
+}
+
 /**
  * Resolves the palette size with bounds.
  * @param count Optional requested count.
@@ -734,6 +813,53 @@ async function fetchBuffer(url: string): Promise<Buffer> {
  */
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function rgbDistanceSq(a: RgbColor, b: RgbColor): number {
+  const dr = a.r - b.r;
+  const dg = a.g - b.g;
+  const db = a.b - b.b;
+  return dr * dr + dg * dg + db * db;
+}
+
+function argbToRgb(argb: number): RgbColor {
+  return {
+    r: (argb >>> 16) & 255,
+    g: (argb >>> 8) & 255,
+    b: argb & 255,
+  };
+}
+
+function refineCentroids(
+  seeds: RgbColor[],
+  entries: { rgb: RgbColor; count: number }[]
+): RgbColor[] {
+  const accum = seeds.map(() => ({ r: 0, g: 0, b: 0, count: 0 }));
+  for (const entry of entries) {
+    let bestIndex = 0;
+    let bestDist = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < seeds.length; i += 1) {
+      const dist = rgbDistanceSq(seeds[i], entry.rgb);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestIndex = i;
+      }
+    }
+    const target = accum[bestIndex];
+    target.r += entry.rgb.r * entry.count;
+    target.g += entry.rgb.g * entry.count;
+    target.b += entry.rgb.b * entry.count;
+    target.count += entry.count;
+  }
+  return seeds.map((seed, index) => {
+    const bucket = accum[index];
+    if (!bucket || bucket.count === 0) return seed;
+    return {
+      r: clamp(bucket.r / bucket.count, 0, 255),
+      g: clamp(bucket.g / bucket.count, 0, 255),
+      b: clamp(bucket.b / bucket.count, 0, 255),
+    };
+  });
 }
 
 /**
